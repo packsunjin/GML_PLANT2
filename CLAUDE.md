@@ -892,7 +892,7 @@ docx 를 열 때 이 링크가 살아 있는지는 확인하지 못했다(2026-1
 
 **2026-10-15 사용자 결정: 공개 저장소는 `packsunjin/GML_PLANT2` 다.** 보고서 참고문헌 [9]와 README 의 clone 명령을
 이 주소로 바꿨다(`report/stim/ref9_edit.json`). 예전 주소 `packsunjin/GML_PLANT` 로 되돌리지 마라.
-⚠️ 코드는 아직 `claude/upbeat-planck-bu5btz` 브랜치에만 있다. 저장소 첫 화면(기본 브랜치)에 보이게 하려면 main 에 합쳐야 한다.
+2026-10-15 에 작업 브랜치를 main 에 합쳤다(PR packsunjin/GML_PLANT2#1). 이후 고친 것도 제출 전에 다시 main 에 합쳐야 [9] 링크에 보인다.
 
 ⚠️ 클라우드 세션에서는 `git remote` 를 새 이름으로 바꾸지 마라. 세션의 git
 프록시가 **세션 시작 때 붙은 이름**으로만 인증을 넣어 주므로, 새 이름으로
