@@ -1,0 +1,31 @@
+/* 초록말 대시보드 — 순수 텍스트 나열 화면.
+   디자인 시스템(app.css) 없이 브라우저 기본 글꼴/버튼/입력창을 그대로 쓴다.
+   여기 있는 규칙은 최소한의 가독성 보정뿐이다. */
+
+body {
+  font-family: system-ui, -apple-system, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  max-width: 640px;
+  margin: 24px auto;
+  padding: 0 16px;
+  line-height: 1.7;
+}
+
+h1 { font-size: 1.3em; }
+h2 { font-size: 1.1em; margin-top: 1.4em; }
+h3 { font-size: 1em; margin-top: 1.2em; }
+
+button { margin: 2px 6px 2px 0; }
+input[type="password"], input[type="number"] { font: inherit; }
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #f2f2f2;
+  padding: 8px;
+  font-size: 12px;
+}
+
+/* 지금 골라진 버튼(모드/탭/과제 등) 표시 — 색 대신 굵게+밑줄만 사용 */
+button[aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
+
+canvas { max-width: 100%; }
