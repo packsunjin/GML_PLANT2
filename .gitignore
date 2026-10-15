@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+venv/
+
+# 대시보드가 실행 중 남기는 기록 (store.py)
+data/app/
+
+# 웹에서 지운 파일이 들어가는 휴지통 (복원 전까지 보관)
+.trash/
+data/moisture_calibration.json
+data/admin.json
+models/train_history.json
+
+# 보고서 빌드 중간 산출물 (tpl.html 에서 매번 생성된다)
+report/blocks.json
+
+# 측정 원본 CSV 는 용량이 커서 git 기록에 넣지 않고 GitHub 릴리스에 올린다(CLAUDE.md 0절 ⑱)
+data/bench/dc_shorted_30min_v2.csv
+data/bench/stage2_electrode_2h.csv
+data/plant/*.csv
+data/touch/
