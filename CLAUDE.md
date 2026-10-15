@@ -890,8 +890,9 @@ docx 를 열 때 이 링크가 살아 있는지는 확인하지 못했다(2026-1
 | `claude/dc-frontend` | DC 결합 앞단 + 보고서 (`GML_PLANT`) |
 | `claude/upbeat-planck-bu5btz` | **2026-10-15 현재.** `packsunjin/GML_PLANT2` 에 Drive zip 전체를 올린 판 |
 
-원격 저장소는 `packsunjin/GML_PLANT` 다. 보고서 참고문헌 [9](2026-10-08 기준 번호)와 README 의 clone
-명령은 이 주소로 되어 있다 — 제출물에 나가는 값이니 건드리지 마라.
+**2026-10-15 사용자 결정: 공개 저장소는 `packsunjin/GML_PLANT2` 다.** 보고서 참고문헌 [9]와 README 의 clone 명령을
+이 주소로 바꿨다(`report/stim/ref9_edit.json`). 예전 주소 `packsunjin/GML_PLANT` 로 되돌리지 마라.
+⚠️ 코드는 아직 `claude/upbeat-planck-bu5btz` 브랜치에만 있다. 저장소 첫 화면(기본 브랜치)에 보이게 하려면 main 에 합쳐야 한다.
 
 ⚠️ 클라우드 세션에서는 `git remote` 를 새 이름으로 바꾸지 마라. 세션의 git
 프록시가 **세션 시작 때 붙은 이름**으로만 인증을 넣어 주므로, 새 이름으로
