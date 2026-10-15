@@ -281,10 +281,11 @@ function roleFor(name) {
 }
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-/* 화면에는 정상=비접촉, 자극=접촉으로 보여 준다(CLAUDE.md ⑱: 이 데이터셋의 자극은 손 접촉).
-   색은 이름과 무관하게 같은 역할을 쓰므로(KNOWN) 그대로다. 그 밖의 이름(수분부족 등)은 건드리지 않는다. */
-const TOUCH_ALIAS = { "정상": "비접촉", "자극": "접촉" };
-function dispName(name) { return TOUCH_ALIAS[name] || name; }
+/* 화면에 보일 클래스 이름은 지금 모델의 데이터셋을 따른다(서버가 /data 의 disp 로 보냄).
+   접촉 모델이면 정상=비접촉, 자극=접촉. 식물 자극 모델이면 그대로 정상/자극.
+   색은 이름과 무관하게 같은 역할을 쓰므로(KNOWN) 그대로다. */
+let DISP = {};
+function dispName(name) { return DISP[name] || name; }
 
 /* ════════════════ 상태 ════════════════ */
 let mode = "connecting";             // connecting | live | demo | down
@@ -575,6 +576,7 @@ $("specPlot").addEventListener("pointerleave", () => { specHover = null; renderS
 /* ════════════════ 데이터 받기 ════════════════ */
 function ingest(d) {
   latest = d;
+  if (d && d.disp) DISP = d.disp;
   const now = performance.now() / 1000;
   const L = d && d.live_spec;
   if (L && Array.isArray(L.cols)) {

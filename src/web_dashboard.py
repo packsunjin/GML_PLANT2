@@ -1,0 +1,1472 @@
+"""
+web_dashboard.py
+================
+브라우저로 접속해서 보는 실시간 웹 대시보드 (matplotlib/VNC 대신).
+
+- 핵심 분석은 inference.RealtimeClassifier를 그대로 재사용한다.
+- 백그라운드 스레드가 실시간으로 신호를 분류하며 최신 결과를 저장하고,
+  Flask 웹서버가 그 결과를 웹페이지(/) 와 JSON(/data)로 내보낸다.
+- 배치는 기존 VNC 화면과 동일: 상단 = 최근 5초 시계열,
+  하단 좌 = 실시간 스펙트로그램, 하단 우 = 상태(색상 원 + 상태명 + 확신도).
+
+실행:
+    python web_dashboard.py                         # 하드웨어/자동 시뮬레이션
+    python web_dashboard.py --sim_csv ../data/raw/자극.csv
+    python web_dashboard.py --model ../models/best_model.joblib
+그 뒤 브라우저에서  http://<파이 IP>:5000  으로 접속.
+"""
+
+import argparse
+import os
+import re
+import signal
+import subprocess
+import sys
+import threading
+import time
+from collections import deque
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import venv_boot; venv_boot.ensure()   # 직접 실행해도 venv 로 갈아탄다
+
+import numpy as np
+
+import sensor_control
+from inference import RealtimeClassifier, SAMPLE_RATE_HZ
+
+# 최신 결과를 담는 공유 상태 (백그라운드 스레드가 갱신, 웹 요청이 읽음)
+_latest = {"ready": False}
+_lock = threading.Lock()
+
+# ---- 수집/학습 작업 (SSH 없이 브라우저에서 실행) -------------------------
+# 한 번에 하나만 돌린다. 실시간 루프와 같은 프로세스에서 무거운 학습을 돌리면 GIL 때문에
+# 대시보드가 멈추므로, 별도 프로세스(subprocess)로 띄우고 출력만 받아온다.
+_job = {"running": False, "kind": None, "label": None, "ok": None,
+        "started": None, "finished": None, "step": None, "stopping": False,
+        "stopped": False,
+        # 수집 진행은 '작업 시작부터의 시간'과 다르다. 작업에는 전극 안정화
+        # 대기(_settle, 20초~3분)가 앞에 붙고, sensor_control 은 그 대기가
+        # 끝난 뒤부터 센다. 두 숫자를 같은 것으로 보여 주면 화면과 터미널이
+        # 서로 다른 초를 말하게 된다. 그래서 수집기가 찍는 값을 그대로 받아 둔다.
+        "collect_sec": None, "collect_total": None}
+_job_log = deque(maxlen=400)
+_job_lock = threading.Lock()
+# 지금 돌고 있는 자식 프로세스. '중지' 버튼이 여기에 SIGINT를 보낸다.
+_job_proc = {"proc": None}
+# 수집 중에는 실시간 루프를 재운다. 같은 ADS1115를 두 프로세스가 번갈아 읽으면
+# 수집 쪽 샘플레이트가 떨어지는데, 그러면 학습 데이터의 시간축이 어긋난다.
+_pause = threading.Event()
+
+
+# "[sensor_control] 수집 중… 12/300초" / "… 12초" 둘 다 받는다.
+_PROGRESS_RE = re.compile(r"수집 중[…\.]*\s*([\d.]+)(?:\s*/\s*([\d.]+))?\s*초")
+
+
+def _job_say(line):
+    line = line.rstrip()
+    m = _PROGRESS_RE.search(line)
+    with _job_lock:
+        _job_log.append(line)
+        if m:
+            _job["collect_sec"] = float(m.group(1))
+            _job["collect_total"] = float(m.group(2)) if m.group(2) else None
+
+
+def _job_snapshot():
+    with _job_lock:
+        d = dict(_job)
+        d["log"] = list(_job_log)
+    # 브라우저에서 Date.now() - started 로 구하면 파이와 브라우저의 시계 차이가
+    # 그대로 표시 오차가 된다. 경과는 서버가 자기 시계 안에서만 계산한다.
+    if d.get("started"):
+        end = d.get("finished") or time.time()
+        d["elapsed_sec"] = round(end - d["started"], 1)
+    return d
+
+
+def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
+    """steps = [(단계이름, 커맨드 리스트), ...] 를 순서대로 별도 프로세스로 실행하고
+    표준출력을 _job_log에 모은다. 이미 실행 중이면 False를 돌려준다."""
+    with _job_lock:
+        if _job["running"]:
+            return False
+        _job.update({"running": True, "kind": kind, "label": label, "ok": None,
+                     "started": time.time(), "finished": None, "step": steps[0][0],
+                     "stopping": False, "stopped": False,
+                     "collect_sec": None, "collect_total": None})
+        _job_log.clear()
+
+    def work():
+        ok = True
+        if pause_live:
+            _pause.set()
+            time.sleep(0.3)   # 실시간 루프가 대기 상태로 들어갈 여유
+        try:
+            for name, cmd in steps:
+                with _job_lock:
+                    _job["step"] = name
+                _job_say(f"── {name} ──")
+                # 자식 프로세스가 한글을 그대로 뱉도록 UTF-8을 강제한다(파이 기본 로캘이
+                # C인 경우 UnicodeEncodeError로 죽는 것을 막는다).
+                env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+                proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True,
+                                        encoding="utf-8", errors="replace", bufsize=1)
+                _job_proc["proc"] = proc
+                for line in proc.stdout:
+                    _job_say(line)
+                rc = proc.wait()
+                _job_proc["proc"] = None
+                # 중지 요청으로 끝났으면 실패가 아니다. sensor_control은 SIGINT를 받아도
+                # 지금까지 모은 데이터를 저장하고 0으로 끝나지만, 단계에 따라 130/-2가
+                # 될 수 있어 함께 성공으로 본다.
+                if _job.get("stopping") and rc in (0, 130, -2, -15):
+                    _job_say(f"⏹ '{name}' 중지됨")
+                    break
+                if rc != 0:
+                    _job_say(f"❌ '{name}' 단계가 실패했습니다 (종료코드 {rc})")
+                    ok = False
+                    break
+        except Exception as e:
+            _job_say(f"❌ 오류: {e}")
+            ok = False
+        finally:
+            _job_proc["proc"] = None
+            if pause_live:
+                _pause.clear()
+            stopped = bool(_job.get("stopping"))
+            # 중지된 학습은 모델이 반쯤 저장됐을 수 있으므로 새 모델을 적용하지 않는다.
+            if ok and not stopped and on_done is not None:
+                try:
+                    on_done()
+                except Exception as e:
+                    _job_say(f"⚠️ 후처리 실패: {e}")
+            with _job_lock:
+                # stopped: 마지막 작업이 '중지'로 끝났는지. 화면이 완료와 구분해 표시한다.
+                _job.update({"running": False, "ok": ok, "finished": time.time(),
+                             "step": None, "stopping": False, "stopped": stopped})
+            _job_say(("⏹ 중지됨 (모은 데이터는 저장됨)" if stopped else "✅ 완료") if ok else "중단됨")
+
+    threading.Thread(target=work, daemon=True).start()
+    return True
+
+
+# ---- 데이터셋 -----------------------------------------------------------
+# 대조군 데이터를 식물 데이터와 같은 폴더에 모으면 서로 덮어써서 둘 다 못 쓰게 된다.
+# 그래서 조건마다 raw/스펙트로그램/특징/모델을 통째로 분리한다.
+# 세 조건은 보고서 Ⅳ장 3절 (4)의 ㉮·㉯·㉰ 에 그대로 대응한다.
+#
+# '식물' 만은 예전 경로(data/raw, data/spectrogram, models)를 그대로 쓴다.
+# 이미 모아 둔 데이터와 학습된 모델이 거기 있어서, 옮기면 다 깨지기 때문이다.
+#
+# 2026-10-13: 이 화면은 이제 **접촉 / 비접촉**만 학습한다(식물 상태 3종은 폐기). 그래서 노출하는
+# 조건은 '접촉' 하나이고, 변환·학습은 항상 30초 창(5초 이동, 앞 문맥 90초)·느린 특징 제외로 돌린다 —
+# 실시간 판정(같은 창·문맥)과 같은 조건이어야 학습/추론이 어긋나지 않는다(CLAUDE.md 0절 ⑳).
+# 파일·클래스 이름은 그대로 정상(=비접촉)/자극(=접촉)이다. 화면에서만 이름을 바꿔 보여 준다.
+TOUCH_WINDOW_SEC = 30.0   # 활동전위 수십 초 → 0.01~1Hz 대역에 맞춘 창(band_filter.py)
+TOUCH_STEP_SEC = 5.0
+TOUCH_STATES = ("정상", "자극")
+# 2026-10-15: 정상/자극 분류 실험을 다시 연다(CLAUDE.md 0절 ㉓). 자극 = 나무젓가락으로 갈래를 2초 누르기.
+# '가짜 자극'은 같은 동작으로 화분 테두리를 누른 대조군이다. 정상 파일은 '식물 자극' 것을 같이 쓴다
+# (share_normal_from) — 같은 시간대의 정상을 따로 또 모으면 사람이 앉아 있는 30분이 두 배가 된다.
+# disp = 화면에서 클래스 이름을 바꿔 보여 줄 때 쓰는 표. 파일·클래스 이름은 그대로 정상/자극이다.
+DATASETS = {
+    "식물 자극": {"title": "식물 자극", "dir": "stim", "disp": {},
+                "note": "정상 = 아무것도 안 함, 자극 = 나무젓가락으로 갈래를 2초 누르기(3분 간격)."},
+    "가짜 자극": {"title": "가짜 자극 (대조군)", "dir": "sham", "disp": {"자극": "가짜 자극"},
+                "control": True, "share_normal_from": "식물 자극",
+                "note": "같은 동작으로 화분 테두리를 누름. 정상은 '식물 자극' 것을 같이 쓰므로 "
+                        "여기서는 가짜 자극만 모으세요."},
+    "접촉": {"title": "접촉 감지 (30초 창)", "dir": None, "disp": {"정상": "비접촉", "자극": "접촉"},
+             "paths": {"raw": os.path.join("data", "touch", "raw"),
+                       "spec": os.path.join("data", "touch2s", "spectrogram"),
+                       "features": os.path.join("data", "touch2s", "features.csv"),
+                       "models": os.path.join("models", "touch")},
+             "note": "손이 식물에 닿았나(접촉) 아닌가(비접촉). 정상=비접촉, 자극=접촉 파일로 학습합니다."},
+}
+# 예전 조건. 화면에는 내보내지 않는다. 되살리려면 위 DATASETS 에 옮기고 DEFAULT_DATASET 을 확인할 것.
+_LEGACY_DATASETS = {
+    "식물": {"title": "식물 (기준)", "dir": None,
+             "note": "살아 있는 방울토마토. 비교의 기준이 되는 조건입니다."},
+    "호일": {"title": "호일 (도체 대조)", "dir": "foil",
+             "note": "알루미늄 호일·구리선 등 도체. 살아 있는 조직이 전혀 없습니다."},
+    "사체": {"title": "사체 (죽은 조직)", "dir": "dead",
+             "note": "바싹 말린 가지. 생물이었지만 지금은 죽은 것."},
+}
+DEFAULT_DATASET = "식물 자극"
+
+# 화면 파형용으로 매번 보낼 최근 구간과 다운샘플 비율.
+# 브라우저가 이어붙여 그리므로 폴링을 몇 번 놓쳐도 메울 만큼만 있으면 된다.
+SIGNAL_TAIL_SEC = 2.0
+SIGNAL_DECIM = 3
+# 화면 전위는 보고서 그림5·6(가)와 같게 필터 안 거친 원신호의 0.1초 평균으로 보낸다.
+# 대역통과 신호를 보내면 계단(손 접촉)이 가장자리만 남아 보고서 그림과 달라 보인다.
+SIGNAL_AVG_SEC = 0.1
+# 화면 스펙트로그램은 실시간 스펙트로그램 페이지(live_spectrogram.py)와 같은 방식으로 흐르게
+# 그린다: 원신호(평균 제거)를 4.1초(1024표본) 한 창으로 FFT, 0.25초마다 한 줄, 최근 90초.
+# 판정용 10초 창 스펙트로그램(spec)을 매번 통째로 다시 그리면 화면이 실시간으로 흐르지 않는다.
+LIVE_NFFT = 1024
+LIVE_HOP_SEC = 0.25
+LIVE_KEEP_SEC = 120.0       # 실시간 스펙트로그램 페이지와 같이 2분
+LIVE_FMAX = 125.0           # 0–125 Hz 전부 보낸다(화면에서 0–10 Hz 와 0–125 Hz 를 고른다)
+_live_cols = deque(maxlen=int(LIVE_KEEP_SEC / LIVE_HOP_SEC))   # (번호, 열)
+_live_next = [0]
+
+
+def dataset_paths(name):
+    """데이터셋 이름 -> 저장소 기준 상대경로 4개."""
+    if DATASETS[name].get("paths"):
+        return dict(DATASETS[name]["paths"])
+    sub = DATASETS[name]["dir"]
+    if sub is None:
+        return {"raw": os.path.join("data", "raw"),
+                "spec": os.path.join("data", "spectrogram"),
+                "features": os.path.join("data", "features.csv"),
+                "models": "models"}
+    base = os.path.join("data", "ds", sub)
+    return {"raw": os.path.join(base, "raw"),
+            "spec": os.path.join(base, "spectrogram"),
+            "features": os.path.join(base, "features.csv"),
+            "models": os.path.join(base, "models")}
+
+
+def _payload(result, recent, clf):
+    """step() 결과 + 최근 5초 버퍼 -> 브라우저로 보낼 JSON 딕셔너리.
+
+    spec(스펙트로그램)은 분류 자체에 쓰이는 값이라 화면에도 그대로 보여준다
+    (픽셀 방식 모델은 이 이미지로 직접 추론하고, 특징 방식도 여기서 특징을 뽑는다).
+    분류에 쓰지 않는 값은 싣지 않는다(네트워크 절약).
+    """
+    # 화면 파형은 브라우저가 자기 버퍼에 **이어붙여** 그린다. 그래서 매번 5초를 통째로
+    # 보낼 필요가 없다 — 폴링 간격(0.5초)에 폴링을 몇 번 놓쳐도 메울 여유만 있으면 된다.
+    # 2초면 네 번을 연속으로 놓쳐도 파형이 끊기지 않는다.
+    tail = int(SIGNAL_TAIL_SEC * clf.sample_rate)
+    blk = max(1, int(round(SIGNAL_AVG_SEC * clf.sample_rate)))
+    tail = tail // blk * blk
+    sig = np.asarray(recent)[-tail:].reshape(-1, blk).mean(axis=1)      # 원신호 0.1초 평균
+    if result is None:
+        # 판정은 못 하지만(옛 필터 모델 / 문맥+창이 아직 안 찼음) 센서는 읽고 있다.
+        # '연결 대기중'으로 보이면 센서가 끊긴 것처럼 오해하므로 신호만이라도 보낸다.
+        spec = np.zeros((0, 0))
+        filt = sig
+        state, proba, probs = "판정 없음", None, None
+    else:
+        spec = np.asarray(result["spectrogram_db"], dtype=float)
+        filt = result["filtered_signal"]
+        state, proba, probs = result["state"], result["proba"], result["probs"]
+    return {
+        "ready": True,
+        "state": state,
+        "proba": proba,
+        "probs": probs,
+        "classes": list(clf.classes),
+        # 파이썬 루프로 원소마다 round(float(...)) 하면 초당 5회 x 800원소가 되어
+        # 의외로 비싸다. numpy에서 한 번에 반올림하고 tolist()로 넘기면 결과는 같고
+        # 실측 20배 이상 빠르다.
+        "signal": np.round(sig, 5).tolist(),
+        "spec": np.round(spec, 1).tolist(),  # (주파수 x 시간)
+        # mean 은 내장 폴백 화면이 쓴다. 없어서 'undefined V' 로 뜨고 있었다.
+        "mean": round(float(np.mean(filt)), 4),
+        "std": round(float(np.std(filt)), 4),
+        "p2p": round(float(np.max(filt) - np.min(filt)), 4),
+        # 실제로 초당 몇 샘플을 읽고 있는지. 명목(250Hz)보다 많이 낮으면 필터/스펙트로그램이
+        # 가정하는 주파수축이 어긋나 정확도가 떨어진다는 신호다.
+        # signal 배열이 초당 몇 점인지. 브라우저가 '지난 폴링 이후 흐른 시간 x 이 값'
+        # 만큼만 이어붙이면 파형이 실제 속도로 흐른다. 이 값 없이 배열 길이의 일정 비율을
+        # 떼어 쓰면 폴링 간격과 어긋나 파형이 실제보다 빠르거나 느리게 흐른다.
+        "signal_hz": round(clf.sample_rate / blk, 3),
+        "signal_kind": "원신호 0.1초 평균(필터 없음)",
+        "sample_rate": SAMPLE_RATE_HZ,
+        "actual_rate": clf.actual_rate(),
+        # 화면 설명에 쓰는 값. 모델마다 다르므로 상수로 박아 두면 거짓말이 된다.
+        "band": [clf.filter["lowcut"], clf.filter["highcut"]],
+        "notch": clf.filter["notch_freq"],
+        "window_sec": clf.window_sec,
+        # 화면에 보일 클래스 이름(접촉 모델이면 정상→비접촉 등). 지금 모델이 어느 데이터셋 것인지로 정한다.
+        "disp": _model_disp(clf.model_path),
+    }
+
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+_disp_cache = {}
+
+
+def _model_disp(model_path):
+    """모델 파일 위치로 데이터셋을 찾아 그 disp 표를 돌려준다. 옛 접촉 모델(models/touch*)도 접촉으로 본다."""
+    if model_path in _disp_cache:
+        return _disp_cache[model_path]
+    full = os.path.realpath(model_path or "")
+    disp = {}
+    for meta_name, meta in DATASETS.items():
+        mdir = os.path.realpath(os.path.join(_ROOT_DIR, dataset_paths(meta_name)["models"]))
+        if meta_name != "접촉" and meta.get("dir") and full.startswith(mdir + os.sep):
+            disp = dict(meta.get("disp", {}))
+            break
+    else:
+        if os.path.basename(os.path.dirname(full)).startswith("touch"):
+            disp = dict(DATASETS["접촉"]["disp"])
+    _disp_cache[model_path] = disp
+    return disp
+
+
+def _worker(clf, source):
+    """백그라운드: 실시간으로 step()을 돌리며 최근 5초 버퍼와 최신 결과를 갱신한다.
+
+    이 루프는 데몬 스레드라, 안에서 예외가 한 번이라도 새면 스레드 자체가 조용히
+    죽는다. 그러면 /data가 마지막 값(또는 시작 때의 ready=False)에 영원히 멈추고,
+    화면은 아무 에러도 없이 그냥 '대기 중'만 계속 떠 있는 것처럼 보인다(모델을
+    잘못 갈아끼우거나 센서가 순간적으로 이상값을 준 경우 등). 그래서 한 번 실패해도
+    루프 자체는 절대 죽지 않게 매 반복을 감싸고, 마지막 에러를 화면에서 볼 수 있게
+    _latest에 같이 담아 보낸다."""
+    recent = np.zeros(int(5 * clf.sample_rate))
+    ring = np.zeros(0)                     # 흐르는 스펙트로그램용 최근 원신호
+    hop = max(1, int(round(LIVE_HOP_SEC * clf.sample_rate)))
+    since_col = 0
+    idle_n = 0
+    hann = np.hanning(LIVE_NFFT)
+    freqs = np.fft.rfftfreq(LIVE_NFFT, 1.0 / clf.sample_rate)
+    keep = freqs <= LIVE_FMAX
+    while True:
+        try:
+            # 수집 작업 중에는 센서를 양보하고 쉰다. 다시 시작할 때 pace()가 목표 시각을
+            # 리셋하므로(1초 이상 밀리면 t0 재설정) 밀린 만큼 폭주하지 않는다.
+            while _pause.is_set():
+                time.sleep(0.2)
+            result = clf.step()
+            if result is None:
+                # 판정을 못 하는 이유를 화면에 알린다. 안 알리면 화면은 '신호 끊김'으로 보인다
+                # (0절 ㉒: 옛 필터 모델은 판정하지 않고, 새 필터는 문맥+창이 찰 때까지 기다린다).
+                idle_n += 1
+                # 센서가 읽은 최신 표본은 buffer 끝에 있다. 판정 없이도 화면에 흘려 보낸다.
+                v_new = clf.buffer[-1]
+                recent = np.roll(recent, -1)
+                recent[-1] = v_new
+                ring = np.concatenate([ring, [v_new]])[-LIVE_NFFT:]
+                since_col += 1
+                if since_col >= hop and len(ring) == LIVE_NFFT:
+                    since_col %= hop
+                    w = (ring - ring.mean()) * hann
+                    col = 10 * np.log10(np.abs(np.fft.rfft(w)) ** 2 + 1e-18)
+                    with _lock:
+                        _live_cols.append((_live_next[0], np.round(col[keep], 1).tolist()))
+                        _live_next[0] += 1
+                if idle_n % max(1, clf.predict_every) == 0:
+                    payload = _payload(None, recent, clf)
+                    src_kind, src_label = clf.input_source()
+                    payload["source_kind"] = src_kind
+                    payload["source"] = src_label
+                    with _lock:
+                        old_err = _latest.get("worker_error")
+                        _latest.clear()
+                        _latest.update(payload)
+                        if old_err:
+                            _latest["worker_error"] = old_err
+                if idle_n % 50 == 1:
+                    with _lock:
+                        if _latest.get("state", "판정 없음") == "판정 없음":
+                            if getattr(clf, "legacy_filter", False):
+                                _latest["worker_error"] = ("옛 필터(0.5~20Hz)로 학습된 모델이라 판정하지 않습니다 — "
+                                                           "새로 수집·변환·학습하세요")
+                            else:
+                                _latest["worker_error"] = (f"판정 준비 중 — 문맥+창 {len(clf.buffer) / clf.sample_rate:.0f}"
+                                                           f"/{clf.buffer_len / clf.sample_rate:.0f}초 수집")
+            if result is not None:
+                idle_n = 0
+                n_new = min(clf.predict_every, len(result["raw_signal"]), len(recent))
+                recent = np.roll(recent, -n_new)
+                recent[-n_new:] = result["raw_signal"][-n_new:]       # 화면 전위는 원신호
+                ring = np.concatenate([ring, result["raw_signal"][-n_new:]])[-LIVE_NFFT:]
+                since_col += n_new
+                if since_col >= hop and len(ring) == LIVE_NFFT:
+                    since_col %= hop
+                    w = (ring - ring.mean()) * hann
+                    col = 10 * np.log10(np.abs(np.fft.rfft(w)) ** 2 + 1e-18)
+                    with _lock:
+                        _live_cols.append((_live_next[0], np.round(col[keep], 1).tolist()))
+                        _live_next[0] += 1
+                payload = _payload(result, recent, clf)
+                # 라벨을 매번 다시 읽는다. /api/mode 로 시뮬레이션 상태를 바꾸면
+                # 배지 문구도 바로 따라가야 하기 때문이다.
+                src_kind, src_label = clf.input_source()
+                payload["source_kind"] = src_kind   # hardware / sim / csv
+                payload["source"] = src_label       # 사람이 읽는 라벨
+                with _lock:
+                    _latest.clear()
+                    _latest.update(payload)
+            clf.pace()
+        except Exception as e:
+            print(f"[web] ⚠️ 실시간 루프 오류 (계속 시도함): {type(e).__name__}: {e}")
+            with _lock:
+                _latest["worker_error"] = f"{type(e).__name__}: {e}"
+            time.sleep(0.5)
+
+
+def _web_dir():
+    """저장소의 web/ 디렉터리(초록말 UI). 없으면 None."""
+    d = os.path.join(os.path.dirname(__file__), "..", "web")
+    return d if os.path.isfile(os.path.join(d, "chorokmal.html")) else None
+
+
+# ---- 관리자 인증 -------------------------------------------------------
+# 데이터를 바꾸는 동작(수집/변환/학습/삭제/보정)만 비밀번호로 잠근다.
+# 화면 보기와 모드 전환은 발표할 때 불편하므로 열어 둔다.
+#
+# ⚠️ 같은 Wi-Fi 안에서 HTTP로 주고받으므로 비밀번호가 평문으로 흐른다. 인터넷에 열어두는
+#    용도가 아니라, 옆 사람이 실수로 누르거나 장난치는 것을 막는 잠금장치로 생각하면 된다.
+_ADMIN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "..", "data", "admin.json")
+# 처음 실행할 때 자동으로 걸리는 기본 비밀번호. 환경변수로 바꿔 실행할 수 있고,
+# 로그인한 뒤 /api/auth/setup 으로도 바꿀 수 있다.
+DEFAULT_ADMIN_PW = os.environ.get("GML_ADMIN_PW", "0000")
+
+
+def _admin_load():
+    try:
+        import json
+        with open(_ADMIN_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _admin_save(data):
+    import json
+    os.makedirs(os.path.dirname(_ADMIN_PATH), exist_ok=True)
+    with open(_ADMIN_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    try:
+        os.chmod(_ADMIN_PATH, 0o600)   # 같은 기기의 다른 사용자에게 노출되지 않게
+    except OSError:
+        pass
+
+
+def _hash_pw(password, salt):
+    import hashlib
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"),
+                               bytes.fromhex(salt), 200_000).hex()
+
+
+def _admin_set_password(password):
+    import secrets
+    salt = secrets.token_hex(16)
+    data = _admin_load()
+    data.update({"salt": salt, "hash": _hash_pw(password, salt)})
+    data.setdefault("secret", secrets.token_hex(32))   # 세션 쿠키 서명용(재시작해도 유지)
+    _admin_save(data)
+    return data
+
+
+def _admin_check(password):
+    import hmac
+    data = _admin_load()
+    if not data.get("hash"):
+        return False
+    return hmac.compare_digest(_hash_pw(password, data["salt"]), data["hash"])
+
+
+def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5000,
+            refresh_hz=5.0, ui="초록말"):
+    try:
+        from flask import Flask, jsonify, request, send_from_directory, session
+    except ImportError:
+        print("[web] Flask가 필요합니다:  pip install flask")
+        raise
+
+    clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv,
+                             predict_hz=refresh_hz, sim_state=sim_state)
+    source = clf.input_source()
+    print(f"[web] 모델 로드: {clf.model_name}, 클래스={clf.classes}")
+    print(f"[web] 입력 소스: {source[1]}")
+
+    threading.Thread(target=_worker, args=(clf, source), daemon=True).start()
+
+    web_dir = _web_dir() if ui == "초록말" else None
+    if ui == "초록말" and web_dir is None:
+        print("[web] web/chorokmal.html 을 찾지 못해 기본 화면으로 실행합니다.")
+
+    # 초록말 UI는 web/static 을 그대로 /static 으로 내보낸다. Flask 기본 static
+    # 폴더(src/static)는 존재하지 않으므로 여기서 직접 지정해야 404가 나지 않는다.
+    app = (Flask(__name__, static_folder=os.path.join(web_dir, "static"), static_url_path="/static")
+           if web_dir else Flask(__name__))
+
+    # git pull 로 JS/CSS만 바뀌면 브라우저가 캐시된 옛 파일을 계속 써서 "버튼이 안 눌리는"
+    # 증상이 난다(HTML은 새것, live.js는 옛것). Flask 기본 static 캐시가 12시간이라
+    # 헤더만 바꿔서는 이미 캐시된 사본이 안 지워지므로, URL 자체에 파일 수정시각을 붙여
+    # 새 주소로 만든다.
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
+    # ---- 관리자 로그인 --------------------------------------------------
+    import datetime
+    import secrets as _secrets
+    _admin = _admin_load()
+    if not _admin.get("secret"):
+        _admin["secret"] = _secrets.token_hex(32)
+        _admin_save(_admin)
+    app.secret_key = _admin["secret"]
+    # 한 번 로그인하면 30일 유지 -> 실험할 때마다 다시 치지 않아도 된다.
+    app.permanent_session_lifetime = datetime.timedelta(days=30)
+
+    if not _admin.get("hash"):
+        # 처음 실행이면 기본 비밀번호로 바로 잠근다(설정 화면을 거치지 않아도 되게).
+        _admin = _admin_set_password(DEFAULT_ADMIN_PW)
+        print(f"[web] 관리자 비밀번호를 기본값 '{DEFAULT_ADMIN_PW}' 으로 설정했습니다.")
+        print("[web] 바꾸려면: GML_ADMIN_PW=새비번 으로 실행하고 data/admin.json 을 지우세요.")
+    print("[web] 수집/변환/학습/삭제는 🔒 관리자 로그인 후 가능합니다.")
+
+    def _is_admin():
+        return bool(session.get("admin"))
+
+    def _auth_info():
+        return {"configured": bool(_admin_load().get("hash")), "authed": _is_admin()}
+
+    def require_admin(fn):
+        """데이터를 바꾸는 API 앞에 붙인다. 비밀번호가 아직 없으면 잠그지 않는다
+        (처음 설치하고 바로 쓸 수 있게). 설정한 뒤에는 로그인해야 통과한다."""
+        from functools import wraps
+
+        @wraps(fn)
+        def guard(*args, **kwargs):
+            if _admin_load().get("hash") and not _is_admin():
+                return jsonify({"ok": False, "error": "관리자 로그인이 필요합니다",
+                                "need_auth": True}), 401
+            return fn(*args, **kwargs)
+        return guard
+
+    @app.route("/api/auth")
+    def api_auth():
+        return jsonify(_auth_info())
+
+    @app.route("/api/auth/setup", methods=["POST"])
+    def api_auth_setup():
+        """처음 한 번 비밀번호를 정한다. 이미 설정돼 있으면 로그인한 상태에서만 바꿀 수 있다."""
+        body = request.get_json(silent=True) or {}
+        pw = (body.get("password") or "").strip()
+        if len(pw) < 4:
+            return jsonify({"ok": False, "error": "비밀번호는 4자 이상으로 정해주세요"}), 400
+        if _admin_load().get("hash") and not _is_admin():
+            return jsonify({"ok": False, "error": "비밀번호를 바꾸려면 먼저 로그인하세요",
+                            "need_auth": True}), 401
+        _admin_set_password(pw)
+        session.permanent = True
+        session["admin"] = True
+        print("[web] 관리자 비밀번호가 설정되었습니다.")
+        return jsonify({"ok": True, **_auth_info()})
+
+    @app.route("/api/auth/login", methods=["POST"])
+    def api_auth_login():
+        body = request.get_json(silent=True) or {}
+        if not _admin_check(body.get("password") or ""):
+            return jsonify({"ok": False, "error": "비밀번호가 맞지 않습니다"}), 401
+        session.permanent = True
+        session["admin"] = True
+        return jsonify({"ok": True, **_auth_info()})
+
+    @app.route("/api/auth/logout", methods=["POST"])
+    def api_auth_logout():
+        session.pop("admin", None)
+        return jsonify({"ok": True, **_auth_info()})
+
+    def _asset_version():
+        stamps = []
+        for name in ("live.js", "ui.css"):
+            p = os.path.join(web_dir, "static", name) if web_dir else None
+            if p and os.path.isfile(p):
+                stamps.append(int(os.path.getmtime(p)))
+        return str(max(stamps)) if stamps else "0"
+
+    @app.route("/")
+    def index():
+        if not web_dir:
+            return PAGE
+        with open(os.path.join(web_dir, "chorokmal.html"), encoding="utf-8") as f:
+            html = f.read()
+        v = _asset_version()
+        for name in ("live.js", "ui.css"):
+            html = html.replace(f'"/static/{name}"', f'"/static/{name}?v={v}"')
+        resp = app.make_response(html)
+        resp.headers["Content-Type"] = "text/html; charset=utf-8"
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.route("/live")
+    def live_page():
+        # 실시간 판정 화면(게이지·스펙트로그램·전위). 같은 서버의 /data 를 0.5초마다 읽는다.
+        # 연결이 끊겨도 가짜 신호로 바꾸지 않는다 — 데모는 화면의 버튼으로만 켠다.
+        p = os.path.join(web_dir, "live.html") if web_dir else None
+        if not p or not os.path.isfile(p):
+            return "web/live.html 이 없습니다", 404
+        resp = send_from_directory(os.path.dirname(p), "live.html")
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.route("/data")
+    def data():
+        try:
+            since = int(request.args.get("since", -1))
+        except ValueError:
+            since = -1
+        with _lock:
+            d = dict(_latest)
+            cols = [(i, c) for i, c in _live_cols if i > since]
+        # 흐르는 스펙트로그램: 브라우저가 받은 마지막 줄 번호(since) 뒤의 새 줄만 보낸다
+        d["live_spec"] = {"col0": cols[0][0] if cols else since + 1,
+                          "cols": [c for _, c in cols], "hop_s": LIVE_HOP_SEC,
+                          "keep_sec": LIVE_KEEP_SEC, "fmax": LIVE_FMAX, "nfft": LIVE_NFFT,
+                          "next": _live_next[0], "df": round(clf.sample_rate / LIVE_NFFT, 6)}
+        # 수집 중에는 실시간 루프가 센서를 양보하고 쉰다(같은 ADS1115를 두 프로세스가
+        # 번갈아 읽으면 수집 쪽 샘플레이트가 떨어지기 때문). 그 사이 화면은 마지막 값에
+        # 멈춰 있는데, 안내가 없으면 고장난 것으로 보인다. 그래서 왜 멈췄는지 같이 보낸다.
+        d["paused"] = _pause.is_set()
+        if d["paused"]:
+            with _job_lock:
+                d["paused_by"] = _job.get("label")
+        return jsonify(d)
+
+    # ---- 모드 전환 (SSH 없이 브라우저에서) -----------------------------
+    # RealtimeClassifier 는 매 스텝마다 self.sim_state 를 읽으므로, 값만 바꿔도
+    # 다음 샘플부터 바로 반영된다. 하드웨어로 도는 중에는 의미가 없어 막는다.
+    SIM_STATES = ("정상", "자극", "순환")
+
+    def _mode_info():
+        kind, label = clf.input_source()
+        return {"source_kind": kind, "source": label,
+                "sim_state": clf.sim_state, "options": list(SIM_STATES),
+                "editable": kind == "sim"}
+
+    @app.route("/api/mode", methods=["GET", "POST"])
+    def api_mode():
+        if request.method == "POST":
+            body = request.get_json(silent=True) or {}
+            want = body.get("sim_state")
+            if want not in SIM_STATES:
+                return jsonify({"ok": False, "error": "알 수 없는 상태입니다"}), 400
+            kind, _ = clf.input_source()
+            if kind != "sim":
+                return jsonify({"ok": False, "error": "하드웨어/CSV 입력에서는 바꿀 수 없습니다",
+                                **_mode_info()}), 409
+            clf.sim_state = want
+            print(f"[web] 시뮬레이션 상태 변경 -> {want}")
+            return jsonify({"ok": True, **_mode_info()})
+        return jsonify(_mode_info())
+
+    # ---- 데이터 수집 / 재학습 (SSH 없이 브라우저에서) ---------------------
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.abspath(os.path.join(src_dir, ".."))
+    TASKS = ("정상-자극",)                  # 접촉/비접촉. 나머지 과제는 폐기
+    MODES = ("특징", "픽셀", "둘다")        # 실시간 모델은 특징 방식(표10). 기본도 특징
+    # train.py의 TASKS와 같은 정의. 과제별로 스펙트로그램이 갖춰졌는지 판단하는 데 쓴다.
+    TASK_CLASSES = {"정상-자극": ["정상", "자극"]}
+
+    def _reload_after_train(run_start):
+        """학습 하나가 여러 파일을 만들 수 있어(과제=전체/방식=둘다 등), 방금 이 실행이
+        새로 남긴 기록 중 정확도가 가장 높은 모델을 골라 실행 중인 분류기에 반영한다.
+        (예전엔 항상 서버 시작 때 쓰던 파일을 그대로 다시 불러와, 다른 과제로
+        학습해도 화면의 '현재 모델'이 안 바뀌는 문제가 있었다.)"""
+        import json
+        models_rel = dataset_paths(DEFAULT_DATASET)["models"]
+        hist_path = os.path.join(root_dir, models_rel, "train_history.json")
+        try:
+            with open(hist_path, encoding="utf-8") as f:
+                hist = json.load(f)
+        except Exception:
+            hist = []
+        fresh = [h for h in hist if h.get("trained_at", 0) >= run_start and h.get("model_file")]
+        if not fresh:
+            _job_say("⚠️ 학습 기록을 찾지 못해 모델을 갈아끼우지 못했습니다")
+            return
+        best = max(fresh, key=lambda h: h.get("accuracy", 0))
+        full = os.path.join(root_dir, models_rel, best["model_file"])
+        if not os.path.isfile(full):
+            _job_say(f"⚠️ 모델 파일이 없어 적용하지 못했습니다: {best['model_file']}")
+            return
+        try:
+            info = clf.reload_model(model_path=full)
+        except Exception as e:
+            _job_say(f"⚠️ 새 모델 적용 실패: {e}")
+            return
+        _job_say(f"↻ 새 모델 적용: {info['name']} ({best['task']}/{best['mode']}, "
+                f"Accuracy={best['accuracy']:.4f}) / 클래스 {info['classes']}")
+        print(f"[web] 모델 교체 -> {info['name']} {info['classes']} ({full})")
+
+    @app.route("/api/job")
+    def api_job():
+        return jsonify(_job_snapshot())
+
+    @app.route("/api/sensors")
+    def api_sensors():
+        """측정계 진단. I2C 인식 여부와 증폭기 기준점의 레일 포화를 브라우저에서 확인한다."""
+        return jsonify(sensor_control.sensor_status())
+
+    @app.route("/api/job/stop", methods=["POST"])
+    @require_admin
+    def api_job_stop():
+        """돌고 있는 작업을 멈춘다. 수집이면 SIGINT를 보내 지금까지 모은 데이터를
+        저장하고 끝나게 하고, 응답이 없으면 강제 종료한다."""
+        with _job_lock:
+            if not _job["running"]:
+                return jsonify({"ok": False, "error": "실행 중인 작업이 없습니다"}), 409
+            _job["stopping"] = True
+            label = _job["label"]
+        proc = _job_proc.get("proc")
+        if proc is None or proc.poll() is not None:
+            return jsonify({"ok": True, "note": "이미 끝나가는 중입니다", **_job_snapshot()})
+        _job_say("⏹ 중지 요청을 보냈습니다…")
+
+        def finisher():
+            try:
+                proc.send_signal(signal.SIGINT)   # 정상 종료 경로 -> 모은 데이터 저장
+                # 수집기는 기록을 이미 파일에 써 두고 있어서 남은 일은 마지막 flush·메타·점검뿐이지만,
+                # 밤새 모은 1천만 줄을 점검하는 데는 수십 초가 걸릴 수 있다. 10초로 두었다가
+                # 강제 종료로 메타 파일이 안 남은 적이 있어 넉넉히 기다린다(2026-10-15).
+                proc.wait(timeout=300)
+            except subprocess.TimeoutExpired:
+                _job_say("⚠️ 응답이 없어 강제 종료합니다")
+                proc.kill()
+            except Exception as e:
+                _job_say(f"⚠️ 중지 실패: {e}")
+
+        threading.Thread(target=finisher, daemon=True).start()
+        return jsonify({"ok": True, "label": label})
+
+    def _pick_dataset(src):
+        """요청에서 데이터셋 이름을 꺼낸다. 없으면 '식물'. 모르는 이름이면 None."""
+        name = (src.get("dataset") or DEFAULT_DATASET)
+        return name if name in DATASETS else None
+
+    def _abs(rel):
+        return os.path.join(root_dir, rel)
+
+    def _ds_counts(name):
+        """데이터셋 하나의 진행 상황: 상태별 CSV 유무와 변환된 이미지 장수."""
+        p = dataset_paths(name)
+        raw_dir, spec_dir = _abs(p["raw"]), _abs(p["spec"])
+        collected, converted, sessions = [], {}, {}
+        share = DATASETS[name].get("share_normal_from")
+        for s in TOUCH_STATES:
+            src_raw = _abs(dataset_paths(share)["raw"]) if (share and s == "정상") else raw_dir
+            n = sensor_control.count_sessions(src_raw, s)
+            sessions[s] = n
+            if n:
+                collected.append(s)
+            d = os.path.join(spec_dir, s)
+            converted[s] = (len([n for n in os.listdir(d) if n.lower().endswith(".png")])
+                            if os.path.isdir(d) else 0)
+        return collected, converted, sessions
+
+    def _ds_best(name):
+        """그 데이터셋에서 가장 정확도가 높았던 학습 기록. 없으면 None."""
+        import json
+        path = _abs(os.path.join(dataset_paths(name)["models"], "train_history.json"))
+        try:
+            with open(path, encoding="utf-8") as f:
+                hist = json.load(f)
+        except Exception:
+            return None
+        hist = [h for h in hist if h.get("accuracy") is not None]
+        return max(hist, key=lambda h: h["accuracy"]) if hist else None
+
+    @app.route("/api/datasets")
+    def api_datasets():
+        """조건별 수집·변환·학습 진행 상황을 한 번에 돌려준다."""
+        out = []
+        for name, meta in DATASETS.items():
+            collected, converted, sessions = _ds_counts(name)
+            best = _ds_best(name)
+            out.append({"name": name, "title": meta["title"], "note": meta["note"],
+                        "disp": meta.get("disp", {}),
+                        "collected": collected, "converted": converted,
+                        "sessions": sessions,
+                        "images": sum(converted.values()),
+                        "best": ({"accuracy": best["accuracy"], "task": best.get("task"),
+                                  "mode": best.get("mode")} if best else None)})
+        return jsonify({"datasets": out, "default": DEFAULT_DATASET})
+
+    @app.route("/api/control")
+    def api_control():
+        """음성 대조군 판정 — 이 연구의 핵심 질문에 직접 답하는 화면용.
+
+        식물과 대조군을 '같은 과제'로 학습한 결과끼리만 비교한다. 3종 정확도와
+        2종 정확도를 나란히 놓으면 우연 수준이 달라(33% vs 50%) 비교가 성립하지 않는다."""
+        base = _ds_best(DEFAULT_DATASET)
+        rows, verdict, reason = [], None, None
+        for name in DATASETS:
+            if name == DEFAULT_DATASET or not DATASETS[name].get("control"):
+                continue
+            b = _ds_best(name)
+            same_task = bool(base and b and b.get("task") == base.get("task"))
+            rows.append({"name": name, "title": DATASETS[name]["title"],
+                         "best": b and {"accuracy": b["accuracy"], "task": b.get("task")},
+                         "comparable": same_task})
+        done = [r for r in rows if r["best"] and r["comparable"]]
+        if not base:
+            reason = f"먼저 '{DEFAULT_DATASET}' 조건을 학습하세요."
+        elif not done:
+            reason = "대조군을 식물과 같은 과제로 학습하면 판정이 나옵니다."
+        else:
+            n_cls = len(TASK_CLASSES.get(base.get("task"), [])) or 3
+            chance = 1.0 / n_cls
+            worst = max(r["best"]["accuracy"] for r in done)
+            # 우연 수준과 식물 정확도의 중간을 경계로 삼는다. 대조군이 그 위면
+            # '식물이 아닌 곳에서 온 신호'로 본다.
+            cut = (chance + base["accuracy"]) / 2
+            verdict = "ok" if worst < cut else "contaminated"
+            reason = (f"기준 과제 '{base.get('task')}' · 우연 수준 {chance*100:.0f}% · "
+                      f"식물 {base['accuracy']*100:.1f}% · 대조군 최고 {worst*100:.1f}%")
+        return jsonify({"base": base and {"accuracy": base["accuracy"], "task": base.get("task")},
+                        "rows": rows, "verdict": verdict, "reason": reason})
+
+    @app.route("/api/collect", methods=["POST"])
+    @require_admin
+    def api_collect():
+        body = request.get_json(silent=True) or {}
+        state = body.get("state")
+        if state not in sensor_control.VALID_STATES:
+            return jsonify({"ok": False, "error": "알 수 없는 상태입니다"}), 400
+        try:
+            duration = float(body.get("duration", 120))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "수집 시간이 숫자가 아닙니다"}), 400
+        # 0이면 '중지 누를 때까지' 무제한. 그 외에는 5~1800초.
+        # 상한을 늘린 이유: 분석 창이 10초라 30초만 모으면 이미지가 열 몇 장뿐이다.
+        if duration != 0 and not (5 <= duration <= 1800):
+            return jsonify({"ok": False, "error": "수집 시간은 5~1800초, 또는 0(무제한)으로 넣어주세요"}), 400
+
+        ds = _pick_dataset(body)
+        if ds is None:
+            return jsonify({"ok": False, "error": "알 수 없는 데이터셋입니다"}), 400
+        share = DATASETS[ds].get("share_normal_from")
+        if share and state == "정상":
+            return jsonify({"ok": False,
+                            "error": f"'{ds}' 의 정상은 '{share}' 것을 같이 씁니다. 정상은 '{share}' 에서 모으세요"}), 400
+
+        # 증폭기가 레일에 붙어 있으면 입력이 변해도 출력이 안 움직인다. 그 상태로
+        # 30분을 모아도 전부 못 쓰는 데이터가 되므로, 시작 전에 한 번 보고 막는다.
+        # (force=true 면 사용자가 알고도 강행하는 것으로 보고 진행한다.)
+        if not body.get("force"):
+            try:
+                st = sensor_control.sensor_status()
+            except Exception:
+                st = None
+            if st and st.get("i2c") and st.get("baseline") is not None \
+                    and st.get("baseline_verdict") not in (None, "정상 범위"):
+                return jsonify({
+                    "ok": False, "precheck": True,
+                    "error": f"측정계가 정상 동작점에 있지 않습니다 — {st['baseline_verdict']}",
+                    "detail": ("이 상태로 모은 데이터는 입력이 변해도 출력이 따라가지 않아 "
+                               "학습에 쓸 수 없습니다. RL(기준) 전극 접촉부터 확인하세요."),
+                    "status": st}), 409
+
+        raw_rel = dataset_paths(ds)["raw"]
+        os.makedirs(_abs(raw_rel), exist_ok=True)
+
+        # 회차. 안 주면 sensor_control 이 비어 있는 다음 번호를 고른다(덮어쓰지 않는다).
+        sess = body.get("session")
+        cmd = [sys.executable, "sensor_control.py", "--state", state,
+               "--duration", str(duration), "--rate", str(SAMPLE_RATE_HZ),
+               "--out", os.path.join("..", raw_rel)]
+        if sess:
+            try:
+                cmd += ["--session", str(int(sess))]
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "회차가 숫자가 아닙니다"}), 400
+        nth = int(sess) if sess else sensor_control.next_session(_abs(raw_rel), state)
+        tag = "" if ds == DEFAULT_DATASET else f"[{ds}] "
+        label = (f"{tag}{state} {nth}회차 수집 (무제한)" if duration == 0
+                 else f"{tag}{state} {nth}회차 {duration:g}초 수집")
+        started = _run_steps("collect", label,
+                             [(f"'{state}' 수집", cmd)], src_dir, pause_live=True)
+        if not started:
+            return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
+        return jsonify({"ok": True, "job": _job_snapshot()})
+
+    @app.route("/api/preprocess", methods=["POST"])
+    @require_admin
+    def api_preprocess():
+        """스펙트로그램 변환(전처리)만 실행한다. state를 주면 그 상태 하나만
+        다시 변환하고 나머지 상태의 결과는 건드리지 않는다."""
+        body = request.get_json(silent=True) or {}
+        state = body.get("state")
+        if state is not None and state not in sensor_control.VALID_STATES:
+            return jsonify({"ok": False, "error": "알 수 없는 상태입니다"}), 400
+
+        ds = _pick_dataset(body)
+        if ds is None:
+            return jsonify({"ok": False, "error": "알 수 없는 데이터셋입니다"}), 400
+        p = dataset_paths(ds)
+        share = DATASETS[ds].get("share_normal_from")
+        if share:
+            # 정상 파일을 원본 데이터셋에서 복사해 온다(없거나 원본이 더 새것일 때만).
+            import shutil
+            src_raw, dst_raw = _abs(dataset_paths(share)["raw"]), _abs(p["raw"])
+            os.makedirs(dst_raw, exist_ok=True)
+            if os.path.isdir(src_raw):
+                for n in os.listdir(src_raw):
+                    if not n.startswith("정상"):
+                        continue
+                    a, b = os.path.join(src_raw, n), os.path.join(dst_raw, n)
+                    if os.path.isfile(a) and (not os.path.isfile(b)
+                                              or os.path.getmtime(a) > os.path.getmtime(b)):
+                        shutil.copy2(a, b)
+
+        cmd = [sys.executable, "preprocess.py",
+               "--raw_dir", os.path.join("..", p["raw"]),
+               "--out_dir", os.path.join("..", p["spec"]),
+               "--features_csv", os.path.join("..", p["features"]),
+               "--window_sec", f"{TOUCH_WINDOW_SEC:g}", "--step_sec", f"{TOUCH_STEP_SEC:g}"]
+        if state:
+            cmd += ["--only", state]
+        tag = "" if ds == DEFAULT_DATASET else f"[{ds}] "
+        label = (f"{tag}'{state}' 스펙트로그램 변환" if state
+                 else f"{tag}전체 스펙트로그램 변환")
+        started = _run_steps("preprocess", label, [(label, cmd)], src_dir)
+        if not started:
+            return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
+        return jsonify({"ok": True, "job": _job_snapshot()})
+
+    @app.route("/api/train", methods=["POST"])
+    @require_admin
+    def api_train():
+        """학습만 실행한다(전처리는 /api/preprocess 로 따로).
+        학습이 끝나면 돌고 있는 분류기에 새 모델을 바로 반영한다."""
+        body = request.get_json(silent=True) or {}
+        task = body.get("task", "정상-자극")
+        mode = body.get("mode", "둘다")
+        if task not in TASKS or mode not in MODES:
+            return jsonify({"ok": False, "error": "알 수 없는 학습 옵션입니다"}), 400
+
+        ds = _pick_dataset(body)
+        if ds is None:
+            return jsonify({"ok": False, "error": "알 수 없는 데이터셋입니다"}), 400
+        p = dataset_paths(ds)
+
+        spec_dir = _abs(p["spec"])
+        if not os.path.isdir(spec_dir) or not os.listdir(spec_dir):
+            return jsonify({"ok": False,
+                            "error": "스펙트로그램이 없습니다. 전처리를 먼저 하세요"}), 409
+
+        tag = "" if ds == DEFAULT_DATASET else f"[{ds}] "
+        label = f"{tag}{task} / {mode} 학습"
+        steps = [(label, [sys.executable, "train.py", "--task", task, "--mode", mode,
+                          "--spectrogram_dir", os.path.join("..", p["spec"]),
+                          "--features_csv", os.path.join("..", p["features"]),
+                          "--models_dir", os.path.join("..", p["models"]),
+                          "--no_slow"])]
+        run_start = time.time()
+        # 대조군으로 학습한 모델을 실시간 분류기에 걸면 안 된다. 호일에서 배운 모델이
+        # 식물 화면을 판정하게 되기 때문이다. 자동 교체는 '식물' 조건에서만 한다.
+        on_done = (lambda: _reload_after_train(run_start)) if ds == DEFAULT_DATASET else None
+        started = _run_steps("train", label, steps, src_dir, on_done=on_done)
+        if not started:
+            return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
+        return jsonify({"ok": True, "job": _job_snapshot()})
+
+    @app.route("/api/model/activate", methods=["POST"])
+    @require_admin
+    def api_model_activate():
+        """자료 탭에서 예전에 학습해 둔 모델을 골라 지금 쓰는 모델로 바로 바꾼다."""
+        body = request.get_json(silent=True) or {}
+        full = _safe_path(body.get("path", ""))
+        if not full or not os.path.isfile(full) or not full.lower().endswith(".joblib"):
+            return jsonify({"ok": False, "error": "모델 파일을 찾을 수 없습니다"}), 404
+        # svm_model_*.joblib / rf_model_*.joblib은 비교용으로 남겨둔 raw 분류기 파일이라
+        # classes/feature_mode 같은 번들 정보가 없다. best_model_*.joblib만 바로 쓸 수 있다.
+        if not os.path.basename(full).startswith("best_model"):
+            return jsonify({"ok": False,
+                            "error": "이 파일은 raw 분류기라 바로 쓸 수 없어요. "
+                                     "best_model_로 시작하는 파일을 골라주세요"}), 400
+        with _job_lock:
+            if _job["running"]:
+                return jsonify({"ok": False, "error": "작업이 도는 중에는 모델을 바꿀 수 없습니다"}), 409
+        try:
+            info = clf.reload_model(model_path=full)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"모델을 불러오지 못했습니다: {e}"}), 400
+        print(f"[web] 수동으로 모델 교체 -> {info['name']} {info['classes']} ({full})")
+        return jsonify({"ok": True, **info})
+
+    # ---- 학습 자료 보기 / 내려받기 / 지우기 -------------------------------
+    # 브라우저에서 다룰 수 있는 폴더는 아래 둘로 제한한다. 요청 경로는 반드시
+    # realpath로 풀어서 이 안에 있는지 확인한다(../ 로 저장소 밖을 건드리지 못하게).
+    ALLOWED_ROOTS = (os.path.join(root_dir, "data"), os.path.join(root_dir, "models"))
+
+    def _safe_path(rel):
+        """저장소 기준 상대경로를 검증해 절대경로로 바꾼다. 허용 폴더 밖이면 None."""
+        if not rel or os.path.isabs(rel) or "\x00" in rel:
+            return None
+        full = os.path.realpath(os.path.join(root_dir, rel))
+        for base in ALLOWED_ROOTS:
+            if full == os.path.realpath(base) or full.startswith(os.path.realpath(base) + os.sep):
+                return full
+        return None
+
+    def _entry(full):
+        st = os.stat(full)
+        return {"path": os.path.relpath(full, root_dir).replace(os.sep, "/"),
+                "name": os.path.basename(full),
+                "size": st.st_size,
+                "mtime": int(st.st_mtime)}
+
+    # 스펙트로그램은 수집을 늘리면 수천 장이 될 수 있어 목록을 잘라 보낸다.
+    LIST_CAP = 300
+
+    def _listing(rel_dir, exts, recursive=False):
+        base = os.path.join(root_dir, rel_dir)
+        out, total = [], 0
+        if not os.path.isdir(base):
+            return out, 0
+        walker = os.walk(base) if recursive else [(base, [], sorted(os.listdir(base)))]
+        for dirpath, _, names in walker:
+            for n in sorted(names):
+                full = os.path.join(dirpath, n)
+                if os.path.isfile(full) and n.lower().endswith(exts):
+                    total += 1
+                    if len(out) < LIST_CAP:
+                        out.append(_entry(full))
+        return out, total
+
+    # 상태별 하위 폴더를 각각 훑어, 상태 정보를 붙이고 상태마다 같은 개수만 보낸다.
+    PER_STATE_CAP = 120
+
+    def _spectrogram_group(spec_rel):
+        base = os.path.join(root_dir, spec_rel)
+        files, totals = [], {}
+        for st in sensor_control.VALID_STATES:
+            d = os.path.join(base, st)
+            if not os.path.isdir(d):
+                totals[st] = 0
+                continue
+            names = sorted(n for n in os.listdir(d) if n.lower().endswith(".png"))
+            totals[st] = len(names)
+            for n in names[:PER_STATE_CAP]:
+                e = _entry(os.path.join(d, n))
+                e["state"] = st            # 프런트가 이걸로 상태별 필터를 만든다
+                files.append(e)
+        return {"key": "spectrogram", "title": "스펙트로그램", "kind": "image",
+                "note": "학습에 쓰인 224x224 이미지.",
+                "files": files, "total": sum(totals.values()),
+                "states": totals}
+
+    def _group(key, title, kind, note, rel_dir, exts, recursive=False):
+        files, total = _listing(rel_dir, exts, recursive)
+        return {"key": key, "title": title, "kind": kind, "note": note,
+                "files": files, "total": total}
+
+    @app.route("/api/files")
+    @require_admin
+    def api_files():
+        # 자료 탭도 조건별로 본다. 대조군 파일이 목록에 아예 안 나오면 확인도 삭제도 못 한다.
+        ds = _pick_dataset(request.args)
+        if ds is None:
+            return jsonify({"error": "알 수 없는 데이터셋입니다"}), 400
+        p = dataset_paths(ds)
+        # features.csv 는 폴더가 아니라 파일 하나라, 그 파일이 있는 폴더를 훑는다.
+        feat_dir = os.path.dirname(p["features"]) or "data"
+        return jsonify({"dataset": ds,
+                        "current_model": os.path.relpath(os.path.realpath(clf.model_path),
+                                                         root_dir).replace(os.sep, "/"),
+                        "groups": [
+            _group("raw", "원시 데이터 (CSV)", "csv",
+                   "수집한 전위 신호. 지우고 다시 수집할 수 있어요.", p["raw"], (".csv",)),
+            _group("features", "특징 테이블 (CSV)", "csv",
+                   "전처리가 뽑은 윈도우별 특징 14개.", feat_dir, (".csv",)),
+            _spectrogram_group(p["spec"]),
+            _group("eval", "평가 이미지 (혼동행렬)", "image",
+                   "학습 결과 confusion matrix.", p["models"], (".png",)),
+            _group("model", "학습된 모델", "model",
+                   "지우면 해당 모델로는 실행할 수 없게 됩니다.", p["models"], (".joblib",)),
+        ]})
+
+    @app.route("/api/files/download")
+    @require_admin
+    def api_files_download():
+        full = _safe_path(request.args.get("path", ""))
+        if not full or not os.path.isfile(full):
+            return jsonify({"ok": False, "error": "없는 파일이거나 접근할 수 없는 경로입니다"}), 404
+        as_attachment = request.args.get("view") != "1"
+        return send_from_directory(os.path.dirname(full), os.path.basename(full),
+                                   as_attachment=as_attachment)
+
+    @app.route("/api/files/preview")
+    @require_admin
+    def api_files_preview():
+        """CSV는 그림이 없으니 파형을 그릴 수 있게 값만 추려서 보낸다.
+        (어떤 파일인지 눈으로 보고 지울 수 있어야 하므로)"""
+        full = _safe_path(request.args.get("path", ""))
+        if not full or not os.path.isfile(full) or not full.lower().endswith(".csv"):
+            return jsonify({"ok": False, "error": "미리보기를 만들 수 없는 파일입니다"}), 404
+        try:
+            import pandas as pd
+            df = pd.read_csv(full)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"읽지 못했습니다: {e}"}), 400
+
+        col = "voltage" if "voltage" in df.columns else None
+        if col is None:
+            # features.csv 처럼 파형이 아닌 표는 클래스별 개수만 알려준다.
+            info = {}
+            if "label" in df.columns:
+                info = {str(k): int(v) for k, v in df["label"].value_counts().items()}
+            return jsonify({"ok": True, "kind": "table", "rows": int(len(df)),
+                            "columns": list(df.columns)[:20], "labels": info})
+
+        v = df[col].to_numpy(dtype=float)
+        n = 400                       # 화면에 그릴 만큼만 균등 추출
+        idx = np.linspace(0, len(v) - 1, min(n, len(v))).astype(int)
+        sig = v[idx]
+        dur = float(df["timestamp_sec"].iloc[-1]) if "timestamp_sec" in df.columns else None
+        return jsonify({"ok": True, "kind": "wave", "rows": int(len(v)),
+                        "duration": round(dur, 2) if dur is not None else None,
+                        "min": round(float(v.min()), 5), "max": round(float(v.max()), 5),
+                        "signal": [round(float(x), 5) for x in sig]})
+
+    # ---- 휴지통 -----------------------------------------------------------
+    # 자료(파일) 관련 엔드포인트는 읽기도 관리자만 쓸 수 있게 한다.
+    # 화면에서는 자료 탭이 관리자 패널 안에 있어 로그인 없이는 보이지 않는데,
+    # API 는 열려 있어서 주소만 알면 원시 CSV·학습된 모델을 그대로 받아갈 수 있었다.
+    # (경로 자체는 _safe_path 가 ALLOWED_ROOTS 밖으로 못 나가게 막고 있다.)
+
+    # 삭제는 바로 지우지 않고 .trash/ 로 옮긴다. 잘못 지워도 되돌릴 수 있어야 하기 때문.
+    # 원래 경로는 manifest.json에 적어 두고, 복원할 때 그 자리로 돌려놓는다.
+    trash_dir = os.path.join(root_dir, ".trash")
+    trash_manifest = os.path.join(trash_dir, "manifest.json")
+    _trash_lock = threading.Lock()
+
+    def _trash_load():
+        try:
+            import json
+            with open(trash_manifest, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def _trash_save(items):
+        import json
+        os.makedirs(trash_dir, exist_ok=True)
+        with open(trash_manifest, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False)
+
+    def _trash_entries():
+        """manifest와 실제 파일을 맞춰 본 목록. 파일이 사라진 항목은 걸러낸다."""
+        out = []
+        for it in _trash_load():
+            full = os.path.join(trash_dir, it["id"])
+            if os.path.isfile(full):
+                st = os.stat(full)
+                out.append({**it, "size": st.st_size})
+        out.sort(key=lambda x: x.get("deleted_at", 0), reverse=True)
+        return out
+
+    @app.route("/api/files/delete", methods=["POST"])
+    @require_admin
+    def api_files_delete():
+        """파일을 휴지통(.trash/)으로 옮긴다. purge=true면 바로 완전 삭제."""
+        body = request.get_json(silent=True) or {}
+        paths = body.get("paths") or ([body["path"]] if body.get("path") else [])
+        purge = bool(body.get("purge"))
+        if not paths:
+            return jsonify({"ok": False, "error": "지울 파일이 없습니다"}), 400
+        with _job_lock:
+            if _job["running"]:
+                return jsonify({"ok": False, "error": "작업이 도는 중에는 지울 수 없습니다"}), 409
+
+        deleted, failed = [], []
+        with _trash_lock:
+            items = _trash_load()
+            for rel in paths:
+                full = _safe_path(rel)
+                if not full or not os.path.isfile(full):
+                    failed.append({"path": rel, "error": "없는 파일이거나 접근할 수 없는 경로"})
+                    continue
+                # 지금 추론에 쓰고 있는 모델 파일은 지우지 못하게 막는다.
+                if os.path.realpath(full) == os.path.realpath(clf.model_path):
+                    failed.append({"path": rel, "error": "지금 사용 중인 모델이라 지울 수 없습니다"})
+                    continue
+                try:
+                    if purge:
+                        os.remove(full)
+                    else:
+                        os.makedirs(trash_dir, exist_ok=True)
+                        # 같은 이름이 여러 번 지워질 수 있으므로 시각+일련번호로 유일하게 만든다.
+                        tid = f"{int(time.time()*1000)}_{len(items)}_{os.path.basename(full)}"
+                        os.replace(full, os.path.join(trash_dir, tid))
+                        items.append({"id": tid, "path": rel, "name": os.path.basename(full),
+                                      "deleted_at": int(time.time())})
+                    deleted.append(rel)
+                except OSError as e:
+                    failed.append({"path": rel, "error": str(e)})
+            if not purge:
+                _trash_save(items)
+
+        print(f"[web] {'완전삭제' if purge else '휴지통 이동'}: {len(deleted)}개 성공, {len(failed)}개 실패")
+        return jsonify({"ok": not failed, "deleted": deleted, "failed": failed,
+                        "purged": purge, "trash": len(_trash_entries())})
+
+    @app.route("/api/trash")
+    @require_admin
+    def api_trash():
+        return jsonify({"items": _trash_entries()})
+
+    @app.route("/api/trash/restore", methods=["POST"])
+    @require_admin
+    def api_trash_restore():
+        body = request.get_json(silent=True) or {}
+        ids = set(body.get("ids") or [])
+        if not ids:
+            return jsonify({"ok": False, "error": "복원할 항목이 없습니다"}), 400
+        restored, failed = [], []
+        with _trash_lock:
+            items = _trash_load()
+            keep = []
+            for it in items:
+                if it["id"] not in ids:
+                    keep.append(it)
+                    continue
+                src = os.path.join(trash_dir, it["id"])
+                dst = _safe_path(it["path"])
+                if not os.path.isfile(src) or not dst:
+                    failed.append({"id": it["id"], "error": "원본 경로를 확인할 수 없습니다"})
+                    continue
+                if os.path.exists(dst):
+                    failed.append({"id": it["id"], "error": "같은 이름의 파일이 이미 있습니다"})
+                    keep.append(it)
+                    continue
+                try:
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    os.replace(src, dst)
+                    restored.append(it["path"])
+                except OSError as e:
+                    failed.append({"id": it["id"], "error": str(e)})
+                    keep.append(it)
+            _trash_save(keep)
+        print(f"[web] 휴지통 복원: {len(restored)}개")
+        return jsonify({"ok": not failed, "restored": restored, "failed": failed})
+
+    @app.route("/api/trash/empty", methods=["POST"])
+    @require_admin
+    def api_trash_empty():
+        """ids를 주면 그것만, 안 주면 휴지통 전체를 완전히 지운다."""
+        body = request.get_json(silent=True) or {}
+        ids = set(body.get("ids") or [])
+        removed, failed = [], []
+        with _trash_lock:
+            items = _trash_load()
+            keep = []
+            for it in items:
+                if ids and it["id"] not in ids:
+                    keep.append(it)
+                    continue
+                try:
+                    src = os.path.join(trash_dir, it["id"])
+                    if os.path.isfile(src):
+                        os.remove(src)
+                    removed.append(it["name"])
+                except OSError as e:
+                    failed.append({"id": it["id"], "error": str(e)})
+                    keep.append(it)
+            _trash_save(keep)
+        print(f"[web] 휴지통 비우기: {len(removed)}개 완전 삭제")
+        return jsonify({"ok": not failed, "removed": removed, "failed": failed})
+
+    @app.route("/api/train/options")
+    def api_train_options():
+        ds = _pick_dataset(request.args)
+        if ds is None:
+            return jsonify({"error": "알 수 없는 데이터셋입니다"}), 400
+        have, converted, sessions = _ds_counts(ds)
+        have = sorted(have)
+        # 과제별로 필요한 클래스가 다 변환돼 있어야 고를 수 있다(없으면 이유를 같이 보낸다).
+        task_ready, task_reason = {}, {}
+        for t, classes in TASK_CLASSES.items():
+            missing = [c for c in classes if not converted.get(c)]
+            task_ready[t] = not missing
+            task_reason[t] = None if not missing else "먼저 변환하세요: " + ", ".join(missing)
+        return jsonify({"tasks": list(TASKS), "modes": list(MODES),
+                        "states": list(TOUCH_STATES),
+                        "collected": have, "converted": converted,
+                        "sessions": sessions,
+                        "task_classes": TASK_CLASSES,
+                        "task_ready": task_ready, "task_reason": task_reason,
+                        "hardware": sensor_control.HARDWARE_AVAILABLE,
+                        "dataset": ds,
+                        "datasets": [{"name": n, "title": m["title"], "note": m["note"],
+                                      "disp": m.get("disp", {})}
+                                     for n, m in DATASETS.items()],
+                        "model": clf.model_name, "classes": list(clf.classes)})
+
+    @app.route("/api/train/history")
+    def api_train_history():
+        """train.py가 학습마다 남긴 기록(과제/방식/정확도)을 최신순으로 돌려준다."""
+        import json
+        ds = _pick_dataset(request.args)
+        if ds is None:
+            return jsonify({"error": "알 수 없는 데이터셋입니다"}), 400
+        path = _abs(os.path.join(dataset_paths(ds)["models"], "train_history.json"))
+        try:
+            with open(path, encoding="utf-8") as f:
+                hist = json.load(f)
+        except Exception:
+            hist = []
+        return jsonify({"history": list(reversed(hist))[:20]})
+
+    ip_hint = os.environ.get("GML_IP", "<파이 IP>")
+    print(f"[web] 브라우저에서 접속:  http://{ip_hint}:{port}   (같은 기기면 http://localhost:{port})")
+    print("[web] Ctrl+C 로 종료")
+    app.run(host=host, port=port, threaded=True)
+
+
+PAGE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GML 식물 전위 모니터</title>
+<style>
+  :root{--bg:#e6e8e1;--panel:#f6f8f2;--plot:#f9fbf5;--grid:#bcc5b6;--gmin:#d8ddd0;--hair:#c4cbbc;
+    --ink:#151a16;--ink2:#586055;--ink3:#8b9488;--trace:#0e7a45;--scan:rgba(14,122,69,.5);
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;}
+  @media (prefers-color-scheme:dark){:root{--bg:#090c0a;--panel:#0f1310;--plot:#0c100d;--grid:#20302a;--gmin:#141c17;--hair:#212a22;
+    --ink:#e6ede8;--ink2:#93a099;--ink3:#5d6a62;--trace:#3ed082;--scan:rgba(62,208,130,.5);}}
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;padding:clamp(12px,2vw,22px)}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .wrap{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+  .top{display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:12px;color:var(--ink3);padding:0 2px}
+  .top b{color:var(--ink);font-weight:700}.top b i{color:var(--trace);font-style:normal}.top .sp{flex:1}
+  .rec{color:var(--trace);font-weight:700;letter-spacing:.08em;display:inline-flex;gap:7px;align-items:center}
+  .rec .d{width:7px;height:7px;border-radius:50%;background:var(--trace);animation:b 1.4s steps(1) infinite}
+  @keyframes b{50%{opacity:.25}}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px;font-weight:700;
+    padding:4px 11px;border-radius:999px;border:1px solid transparent}
+  .badge .bd{width:7px;height:7px;border-radius:50%;background:currentColor}
+  .badge.hardware{color:#1f9d5f;background:rgba(31,157,95,.14);border-color:rgba(31,157,95,.35)}
+  .badge.sim{color:#c07216;background:rgba(192,114,22,.15);border-color:rgba(192,114,22,.38)}
+  .badge.csv{color:#1667c2;background:rgba(22,103,194,.14);border-color:rgba(22,103,194,.35)}
+  .signal{border:1px solid var(--hair);background:var(--panel)}
+  .h{display:flex;justify-content:space-between;align-items:baseline;padding:11px 15px 3px}
+  .h h2{margin:0;font-size:12px;font-weight:700;color:var(--ink2)}.h .u{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+  svg#wave{width:100%;height:240px;display:block;background:var(--plot)}
+  .row{display:grid;grid-template-columns:1.3fr .7fr;gap:14px}
+  @media (max-width:680px){.row{grid-template-columns:1fr}svg#wave{height:190px}}
+  .box{border:1px solid var(--hair);background:var(--panel);padding:14px}
+  .box h2{margin:0 0 10px;font-size:12px;font-weight:700;color:var(--ink2)}
+  canvas#spec{width:100%;height:180px;display:block;background:var(--plot);border:1px solid var(--hair)}
+  .axx{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--ink3);margin-top:6px}
+  .status{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;height:100%;min-height:190px}
+  .dot{width:104px;height:104px;border-radius:50%;background:#888;border:3px solid rgba(0,0,0,.15);
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:19px;letter-spacing:-.02em;transition:background .3s}
+  .stname{font-size:26px;font-weight:800;letter-spacing:-.02em}
+  .stconf{font-family:var(--mono);color:var(--ink2);font-size:14px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--hair);border:1px solid var(--hair)}
+  .stats div{background:var(--panel);padding:9px 10px;text-align:center}
+  .stats .k{font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3)}
+  .stats .v{font-family:var(--mono);font-size:14px;font-weight:700;margin-top:2px}
+  .wait{color:var(--ink3);font-family:var(--mono);font-size:13px;padding:20px;text-align:center}
+</style></head><body>
+<div class="wrap">
+  <div class="top"><b>GML<i>//</i>식물 전위 모니터</b>
+    <span class="badge sim" id="mode"><span class="bd"></span><span id="modetxt">입력 확인 중…</span></span>
+    <span class="sp"></span>
+    <span class="rec"><span class="d"></span>LIVE</span><span class="mono" id="clock">--:--:--</span></div>
+
+  <div class="signal">
+    <div class="h"><h2>전위 신호 · 필터 후</h2><span class="u" id="span">최근 —</span></div>
+    <svg id="wave" viewBox="0 0 1000 240" preserveAspectRatio="none"></svg>
+  </div>
+
+  <div class="row">
+    <div class="box"><h2>실시간 스펙트로그램</h2>
+      <canvas id="spec" width="360" height="150"></canvas>
+      <div class="axx"><span>0 Hz</span><span>주파수 →</span></div>
+    </div>
+    <div class="box"><h2>상태</h2>
+      <div class="status" id="status"><div class="wait">데이터 수집 중… (버퍼 채우는 중)</div></div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div><div class="k">평균</div><div class="v" id="s_mean">–</div></div>
+    <div><div class="k">표준편차</div><div class="v" id="s_std">–</div></div>
+    <div><div class="k">피크투피크</div><div class="v" id="s_p2p">–</div></div>
+  </div>
+</div>
+<script>
+const CSS=getComputedStyle(document.documentElement),C=n=>CSS.getPropertyValue(n).trim();
+const COLOR={"정상":"#1f9d5f","자극":"#c07216","스트레스":"#c62828"};
+const VIR=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+const lut=i=>{const t=i/255*4,k=Math.floor(t),f=t-k,a=VIR[k],b=VIR[Math.min(4,k+1)];
+  return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;};
+setInterval(()=>{document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-GB',{hour12:false});},1000);
+
+function drawWave(sig){
+  const W=1000,H=240,n=sig.length; if(!n)return;
+  let mn=Math.min(...sig),mx=Math.max(...sig); const pad=(mx-mn||1)*0.15; mn-=pad; mx+=pad;
+  const y=v=>H-(v-mn)/(mx-mn)*H, sx=W/(n-1), tr=C('--trace');
+  let g=''; for(let i=0;i<=10;i++){const x=i*W/10;g+=`<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="${i%2?C('--gmin'):C('--grid')}"/>`;}
+  for(let j=0;j<=6;j++){const yy=j*H/6;g+=`<line x1="0" y1="${yy}" x2="${W}" y2="${yy}" stroke="${j%2?C('--gmin'):C('--grid')}"/>`;}
+  let d='M0 '+y(sig[0]).toFixed(1); for(let i=1;i<n;i++)d+=' L'+(i*sx).toFixed(1)+' '+y(sig[i]).toFixed(1);
+  document.getElementById('wave').innerHTML=
+    `<g stroke-width="1">${g}</g>`+
+    `<path d="${d}" fill="none" stroke="${tr}" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/>`+
+    `<circle cx="${W}" cy="${y(sig[n-1]).toFixed(1)}" r="4.5" fill="${tr}"/>`;
+}
+function drawSpec(spec){
+  if(!spec||!spec.length)return; const nf=spec.length,nt=spec[0].length;
+  let mn=1e9,mx=-1e9; for(const r of spec)for(const v of r){if(v<mn)mn=v;if(v>mx)mx=v;}
+  const rng=(mx-mn)||1, c=document.getElementById('spec'),x=c.getContext('2d');
+  const cw=c.width,ch=c.height,cwn=cw/nt,chn=ch/nf;
+  for(let fi=0;fi<nf;fi++)for(let ti=0;ti<nt;ti++){
+    x.fillStyle=lut(Math.max(0,Math.min(255,(spec[fi][ti]-mn)/rng*255|0)));
+    x.fillRect(ti*cwn, ch-(fi+1)*chn, Math.ceil(cwn), Math.ceil(chn)); }
+}
+function status(d){
+  const col=COLOR[d.state]||"#888", el=document.getElementById('status');
+  const conf=d.proba!=null?(d.proba*100).toFixed(1)+'%':'N/A';
+  el.innerHTML=`<div class="dot" style="background:${col}">${d.state}</div>`+
+    `<div class="stname" style="color:${col}">${d.state}</div>`+
+    `<div class="stconf">확신도 ${conf}</div>`;
+}
+function mode(d){
+  const b=document.getElementById('mode');
+  b.className='badge '+(d.source_kind||'sim');
+  const icon={hardware:'🔌 하드웨어',sim:'🧪 시뮬레이션',csv:'▶ CSV 재생'}[d.source_kind]||'입력';
+  document.getElementById('modetxt').textContent=(d.source||icon);
+}
+async function tick(){
+  try{const d=await (await fetch('/data')).json(); if(!d.ready)return;
+    mode(d); drawWave(d.signal); drawSpec(d.spec); status(d);
+    // 보내는 구간 길이가 바뀌어도 라벨이 거짓말하지 않게 값에서 계산한다.
+    if(d.signal_hz)document.getElementById('span').textContent=
+      '최근 '+(d.signal.length/d.signal_hz).toFixed(1)+' s';
+    document.getElementById('s_mean').textContent=d.mean+' V';
+    document.getElementById('s_std').textContent=d.std+' V';
+    document.getElementById('s_p2p').textContent=d.p2p+' V';
+  }catch(e){}
+}
+setInterval(tick,200); tick();
+</script></body></html>"""
+
+
+def main():
+    here = os.path.dirname(__file__)
+    parser = argparse.ArgumentParser(description="실시간 식물 상태 웹 대시보드")
+    parser.add_argument("--model", default=os.path.join(here, "..", "models", "best_model.joblib"))
+    parser.add_argument("--sim_csv", default=None, help="하드웨어 없을 때 재생할 샘플 CSV")
+    parser.add_argument("--sim_state", default="정상", choices=["정상", "자극", "순환"],
+                        help="CSV·하드웨어 없을 때 라이브로 생성할 상태")
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--ui", default="초록말", choices=["초록말", "기본"],
+                        help="초록말=web/ 디자인 화면, 기본=예전 내장 화면")
+    parser.add_argument("--predict_hz", type=float, default=5.0,
+                        help="초당 분류(스펙트로그램+모델 추론) 횟수. 기본 5. 파이가 못 따라가서 "
+                             "actual_rate가 낮게 나오면(화면에 빨간 Hz) 이 값을 2~3으로 낮춰보세요 "
+                             "— 샘플 수집 속도(250Hz)는 그대로 두고 분류 빈도만 줄어듭니다.")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.model):
+        print(f"[web] 모델 파일이 없습니다: {args.model}  (먼저 train.py 실행)")
+        return
+    run_web(args.model, sim_csv=args.sim_csv, sim_state=args.sim_state, host=args.host,
+            port=args.port, ui=args.ui, refresh_hz=args.predict_hz)
+
+
+if __name__ == "__main__":
+    main()
