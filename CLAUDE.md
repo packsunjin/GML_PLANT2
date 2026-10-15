@@ -827,6 +827,11 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 표지의 양식 안내문(2026. 11. 1주 … 20페이지 이내 작성)과 혼자 남은 ")" 는 글자를 비웠다(`report/stim/cover_clean.py`).
 > 그 뒤 `hwpx_edit.py … report/stim/text_edit.json` 으로 부록 1절(소스코드 목록 최신화), 제언 ⑥, 연구 요약(내용·성과)에 7절을 반영했다(맨 마지막 단계).
 > 연구 요약 성과 끝에 "■ 분류 결과를 채울 자리" 가 있다 — 학습 뒤 채운다.
+> 이어서 `report/stim/concl_edit.json` 으로 연구의 한계(느린 기준선 변화), 표11 자극 반응 근거, 결론 연구문제 2 에 7절을 반영했다.
+> 2026-10-15 사용자 확인: 지금(7절) 원줄기 핀은 **관통이 아니라 꽂음**이다(3단계 10-07 기록은 관통). 표2 전극 칸을 고쳤다(`report/stim/table2_edit.json`).
+> 사진2 에 전극 이름을 표시한 판 `report/PHOTO2_20261015_label.jpg`(`report/stim/annotate_photo2.py`)를 만들었다. 파랑=위 측정 핀,
+> 주황=아래 측정 핀, 빨강=기준 핀(흙)은 사진 색으로 짐작한 것이었고 **2026-10-15 사용자가 맞다고 확인**해 보고서 사진2(BinData/image7.jpg)를
+> 이 표시판으로 바꿨다(`hwpx_edit.py … BinData/image7.jpg=report/PHOTO2_20261015_label.jpg`).
 > 남은 양식 문제: 쪽수(한글에서만 확인 가능). 학교 마감(10/23)과 안내문의 "11월 1주"가 달라 선생님 확인 필요.
 > 계단 4번은 모두 기록 시각 앞 10초 안(실제로 누른 순간)에 있다. 4번째 누르기는 누른 뒤 10~20초에 다시 +12 mV 올라 머물렀다 — "판단 보류".
 >
@@ -892,7 +897,7 @@ docx 를 열 때 이 링크가 살아 있는지는 확인하지 못했다(2026-1
 
 **2026-10-15 사용자 결정: 공개 저장소는 `packsunjin/GML_PLANT2` 다.** 보고서 참고문헌 [9]와 README 의 clone 명령을
 이 주소로 바꿨다(`report/stim/ref9_edit.json`). 예전 주소 `packsunjin/GML_PLANT` 로 되돌리지 마라.
-⚠️ 코드는 아직 `claude/upbeat-planck-bu5btz` 브랜치에만 있다. 저장소 첫 화면(기본 브랜치)에 보이게 하려면 main 에 합쳐야 한다.
+2026-10-15 에 작업 브랜치를 main 에 합쳤다(PR packsunjin/GML_PLANT2#1). 이후 고친 것도 제출 전에 다시 main 에 합쳐야 [9] 링크에 보인다.
 
 ⚠️ 클라우드 세션에서는 `git remote` 를 새 이름으로 바꾸지 마라. 세션의 git
 프록시가 **세션 시작 때 붙은 이름**으로만 인증을 넣어 주므로, 새 이름으로
