@@ -556,9 +556,11 @@ def _settle(settle_sec, sample_rate_hz, max_sec=SETTLE_MAX_SEC):
 
     최소 settle_sec 은 무조건 기다리고, 그 뒤로는 기준점의 기울기가
     SETTLE_STABLE_MV_PER_MIN 아래로 떨어질 때까지 max_sec 까지 더 기다린다.
-    이 구간의 값은 저장하지 않는다."""
+    이 구간의 값은 저장하지 않는다.
+
+    중지 요청(SIGINT)을 받으면 False 를 돌려준다 — 수집을 시작하지 말라는 뜻이다."""
     if not HARDWARE_AVAILABLE or settle_sec <= 0:
-        return
+        return True
     print(f"[sensor_control] 전극 안정화 대기 (최소 {settle_sec:.0f}초, 최대 {max_sec:.0f}초)")
     print("    붙인 직후의 접촉 전위·상처 반응이 가라앉기를 기다립니다.")
     interval = 1.0 / max(1.0, sample_rate_hz)
@@ -589,16 +591,19 @@ def _settle(settle_sec, sample_rate_hz, max_sec=SETTLE_MAX_SEC):
                 print("    마르지 않게 덮은 뒤 다시 시작하는 것이 좋습니다.")
                 break
     except KeyboardInterrupt:
-        print("[sensor_control] ⏹ 안정화 대기를 건너뜁니다.")
-        return
+        # 예전에는 여기서 대기만 건너뛰고 수집을 그대로 시작했다. 웹에서 대기 중에 '중지'를
+        # 누르면 화면은 "중지하는 중"인데 수집은 정해진 시간 끝까지 돌았다(2026-10-15).
+        print("[sensor_control] ⏹ 안정화 대기 중에 중지 — 수집하지 않습니다.")
+        return False
     if not vals:
-        return
+        return True
     avg = float(np.mean(vals[-int(SETTLE_CHUNK_SEC * sample_rate_hz):]))
     print(f"[sensor_control] 안정화 후 기준점 {avg:.3f}V "
           f"(대기 시작 무렵 {head:.3f}V -> {avg - head:+.3f}V 이동)")
     if avg > RAIL_HIGH_V or avg < RAIL_LOW_V:
         print("[sensor_control] ⚠️  기준점이 전원 레일에 붙어 있습니다. 이대로 모으면")
         print("    파형이 통째로 잘립니다. 전극 접촉을 고치고 다시 시작하세요.")
+    return True
 
 
 def _git_rev():
@@ -690,7 +695,8 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
     print(f"[sensor_control] 모드: {mode_str}")
     print(f"[sensor_control] 상태='{state}' 샘플링={sample_rate_hz}Hz 길이={length_str} -> {out_path}")
 
-    _settle(settle_sec, sample_rate_hz, max_sec=settle_max_sec)
+    if not _settle(settle_sec, sample_rate_hz, max_sec=settle_max_sec):
+        return None
 
     # ── 기록은 모으는 동안 파일에 바로 쓴다(2026-10-15) ──────────────────────
     # 예전에는 전부 메모리(rows)에 들고 있다가 끝에 한꺼번에 썼다. 무제한(밤새) 수집이면
