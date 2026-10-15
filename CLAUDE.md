@@ -658,6 +658,18 @@ git 본문). 위치는 파이와 같은 `data/ds/<stim|sham>/raw/`. 올라온 �
 **저장소·비밀번호** — 2026-10-15 부터 `packsunjin/GML_PLANT2` 의 `claude/upbeat-planck-bu5btz` 브랜치에
 올렸다. 관리자 비밀번호 기본값은 **0000** 이고 `data/admin.json` 도 저장소에 있다(사용자 결정, 재현용).
 
+### ㉔ 무제한 수집(시간 0)이 중지할 때 데이터를 잃을 수 있었다
+2026-10-15. 사용자가 "0초 무제한에 오류가 있는 것 같다"고 해서 코드를 읽어 세 가지를 찾았다.
+1. `collect()` 가 전부 메모리(`rows`, 튜플 리스트)에 모았다가 **끝에 한꺼번에** CSV 를 썼다. 밤새(약 1천만 줄) 모으면
+   메모리를 GB 단위로 먹고, 전원이 나가거나 프로세스가 죽으면 **전부** 잃는다.
+2. 웹 중지(`api_job_stop`)는 SIGINT 뒤 **10초만** 기다리고 강제 종료했다. 큰 기록은 쓰는 데 10초를 넘겨 쓰다 죽었다.
+3. 저장 중에 중지를 한 번 더 누르면 SIGINT 가 또 KeyboardInterrupt 를 일으켜 **쓰다 끊겼다**(메타 없음).
+고친 것 — 기록을 `progress_sec`(5초)마다 CSV 에 바로 붙여 쓰고(flush), 통계용으로는 `array('d')` 두 개만 든다(표본당
+16바이트). 저장 단계에 들어가면 SIGINT/SIGTERM 을 무시한다. 웹 중지 대기는 300초. `_write_meta(n_rows, span)`,
+`_report_drift(t, v, fs)` 로 인자가 바뀌었다. 시뮬레이션으로 무제한 10초 → 중지 두 번 → CSV 2500줄·메타 정상 확인.
+**하드웨어 경로는 파이에서 아직 시험하지 않았다.** 파이에 반영하려면 `src/sensor_control.py`·`src/web_dashboard.py` 를 복사하고
+`sudo systemctl restart plant-dashboard`.
+
 ---
 
 ## 1. 하드웨어 — 갖고 있는 것 / 주문한 것

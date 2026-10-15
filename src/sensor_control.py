@@ -458,17 +458,17 @@ def _report_motion_artifacts(values, fs):
 DRIFT_WARN_MV_PER_MIN = 30.0
 
 
-def _report_drift(rows, fs):
+def _report_drift(t, v, fs):
     """수집 구간 전체의 기울기(전극 표류)를 재서 알려준다.
 
     식물에 붙인 젖은 전극은 시간이 지나면서 마르고, 그 과정에서 전극-식물 임피던스와
     접촉 전위가 변해 느린 표류가 생긴다. 표류 자체는 대역통과 하한(0.5Hz)이 걷어내지만,
     표류가 계속되면 증폭기 기준점이 레일 쪽으로 밀려 결국 신호가 통째로 잘린다.
     수집이 끝난 직후에 알려 줘야 전극을 다시 적시고 재수집할 수 있다."""
-    if not HARDWARE_AVAILABLE or len(rows) < int(fs) * 10:
+    if not HARDWARE_AVAILABLE or len(t) < int(fs) * 10:
         return
-    t = np.asarray([r[0] for r in rows], dtype=float)
-    v = np.asarray([r[1] for r in rows], dtype=float)
+    t = np.asarray(t, dtype=float)
+    v = np.asarray(v, dtype=float)
     span_min = (t[-1] - t[0]) / 60.0
     if span_min <= 0:
         return
@@ -634,8 +634,7 @@ def is_simulated(csv_path):
     return None if m is None else (m.get("mode") != "hardware")
 
 
-def _write_meta(out_path, state, session, sample_rate_hz, rows):
-    span = float(rows[-1][0]) if rows else 0.0
+def _write_meta(out_path, state, session, sample_rate_hz, n_rows, span):
     meta = {
         "mode": "hardware" if HARDWARE_AVAILABLE else "simulation",
         "hardware_error": None if HARDWARE_AVAILABLE else _HW_ERR,
@@ -643,9 +642,9 @@ def _write_meta(out_path, state, session, sample_rate_hz, rows):
         "state": state,
         "session": session,
         "requested_rate_hz": float(sample_rate_hz),
-        "actual_rate_hz": (len(rows) / span) if span > 0 else None,
+        "actual_rate_hz": (n_rows / span) if span > 0 else None,
         "has_ref": FRONTEND.has_ref,
-        "n_samples": len(rows),
+        "n_samples": n_rows,
         "duration_sec": span,
         "recorded_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "git_rev": _git_rev(),
@@ -693,7 +692,27 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
 
     _settle(settle_sec, sample_rate_hz, max_sec=settle_max_sec)
 
-    rows = []
+    # ── 기록은 모으는 동안 파일에 바로 쓴다(2026-10-15) ──────────────────────
+    # 예전에는 전부 메모리(rows)에 들고 있다가 끝에 한꺼번에 썼다. 무제한(밤새) 수집이면
+    # 1천만 줄이 넘어 메모리를 GB 단위로 먹고, 중지 후 쓰는 데 수십 초가 걸려 웹의 10초
+    # 강제 종료에 걸리면 **통째로 날아갔다**. 전원이 나가도 마찬가지였다.
+    # 지금은 progress_sec 마다 파일에 붙여 쓰고(flush), 통계용으로는 숫자 배열만 들고 있다.
+    from array import array
+    ts, vs = array("d"), array("d")          # 통계·점검용(표본당 16바이트)
+    buf = []                                  # 다음 flush 까지 모아 둘 줄
+    f = open(out_path, "w", newline="", encoding="utf-8")
+    writer = csv.writer(f)
+    header = ["timestamp_sec", "voltage"]
+    if FRONTEND.has_ref:
+        header.append("voltage_ref")      # 참조(더미) 채널 — 표류만 담긴 값
+    writer.writerow(header)
+
+    def flush():
+        if buf:
+            writer.writerows(buf)
+            buf.clear()
+        f.flush()
+
     stopped = False
     start = time.time()
     next_report = progress_sec
@@ -717,12 +736,14 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
                 # 시간축은 '가정한 격자(i/fs)'가 아니라 실제 경과 시간을 적는다.
                 # 하드웨어가 목표 속도를 못 따라가도 CSV의 시간이 거짓말하지 않게 하기 위함.
                 # (i/fs 로 적으면 100Hz로 잰 것을 250Hz라고 우기게 되어 주파수가 다 틀어진다)
-                now_t = time.time() - start
+                now_t = round(time.time() - start, 6)
                 if FRONTEND.has_ref:
                     v, vref = FRONTEND.read_pair()
-                    rows.append((round(now_t, 6), v, vref))
+                    buf.append((now_t, v, vref))
                 else:
-                    rows.append((round(now_t, 6), read_sample_hardware()))
+                    v = read_sample_hardware()
+                    buf.append((now_t, v))
+                ts.append(now_t); vs.append(v)
                 i += 1
                 # 실제 하드웨어 샘플링 주기에 맞춰 페이싱
                 elapsed = time.time() - start
@@ -730,6 +751,7 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
                 if target > elapsed:
                     time.sleep(min(target - elapsed, interval))
                 if elapsed >= next_report:
+                    flush()
                     report(i, elapsed)
                     next_report += progress_sec
         else:
@@ -739,17 +761,19 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
             i = 0
             while unlimited or i < n_samples:
                 take = chunk if unlimited else min(chunk, n_samples - i)
-                t_array = (np.arange(i, i + take)) * interval
+                t_array = np.round((np.arange(i, i + take)) * interval, 6)
                 v_array = simulate_batch(t_array, state)
                 if FRONTEND.has_ref:
                     # 참조 채널은 같은 전극·같은 앞단이지만 식물이 없다. 그래서
                     # 표류·잡음·전원성분은 있고 상태 신호만 없다. 이 차이가 곧
                     # '식물 반응'과 '전극이 그냥 표류한 것'을 가르는 근거다.
                     r_array = simulate_batch(t_array, "정상")
-                    rows.extend(zip(np.round(t_array, 6), v_array, r_array))
+                    buf.extend(zip(t_array.tolist(), v_array.tolist(), r_array.tolist()))
                 else:
-                    rows.extend(zip(np.round(t_array, 6), v_array))
+                    buf.extend(zip(t_array.tolist(), v_array.tolist()))
+                ts.extend(t_array.tolist()); vs.extend(np.asarray(v_array, float).tolist())
                 i += take
+                flush()
                 report(i, i * interval)
                 if unlimited:
                     # 무제한 시뮬레이션은 실제 시간에 맞춰 흘러가게 한다
@@ -757,35 +781,41 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
                     time.sleep(progress_sec)
     except KeyboardInterrupt:
         stopped = True
-        print(f"[sensor_control] ⏹ 중지 요청 — 지금까지 모은 {len(rows)} 샘플을 저장합니다.")
+        print(f"[sensor_control] ⏹ 중지 요청 — 지금까지 모은 {len(ts)} 샘플을 저장합니다.")
 
-    if not rows:
+    # 저장하는 동안 또 중지 신호가 와도(중지 버튼을 두 번 누름) 쓰다 끊기지 않게 무시한다.
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, signal.SIG_IGN)
+        except (ValueError, OSError):
+            pass
+    flush()
+    f.close()
+
+    if not len(ts):
         print("[sensor_control] 모은 데이터가 없어 저장하지 않습니다.")
+        try:
+            os.remove(out_path)
+        except OSError:
+            pass
         return None
-
-    with open(out_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        header = ["timestamp_sec", "voltage"]
-        if FRONTEND.has_ref:
-            header.append("voltage_ref")      # 참조(더미) 채널 — 표류만 담긴 값
-        writer.writerow(header)
-        writer.writerows(rows)
 
     # ── 출처를 파일 옆에 같이 남긴다 ──────────────────────────────
     # 예전에는 HARDWARE/SIMULATION 을 화면에 print 만 하고 버렸다. 그래서 나중에
     # CSV 만 보고는 그게 식물에서 온 값인지 시뮬레이터가 만든 값인지 구분할
     # 방법이 아예 없었고, 실제로 시뮬레이터 출력이 실측 데이터로 오해된 채
     # 보고서까지 올라갔다. 신호 처리로 사후에 알아내려 하지 말고 수집할 때 적는다.
-    _write_meta(out_path, state, session, sample_rate_hz, rows)
+    t_np = np.frombuffer(ts, dtype=float); v_np = np.frombuffer(vs, dtype=float)
+    _write_meta(out_path, state, session, sample_rate_hz, n_rows=len(ts), span=float(t_np[-1]))
 
-    _report_artifacts([r[1] for r in rows], sample_rate_hz)
-    _report_motion_artifacts([r[1] for r in rows], sample_rate_hz)
-    _report_drift(rows, sample_rate_hz)
+    _report_artifacts(v_np, sample_rate_hz)
+    _report_motion_artifacts(v_np, sample_rate_hz)
+    _report_drift(t_np, v_np, sample_rate_hz)
 
-    span = float(rows[-1][0]) if rows else 0.0
-    actual = (len(rows) / span) if span > 0 else float(sample_rate_hz)
+    span = float(t_np[-1])
+    actual = (len(ts) / span) if span > 0 else float(sample_rate_hz)
     print(f"[sensor_control] 저장 완료{' (중지됨)' if stopped else ''}: "
-          f"{out_path} ({len(rows)} rows, {span:.1f}초, 실측 {actual:.1f}Hz)")
+          f"{out_path} ({len(ts)} rows, {span:.1f}초, 실측 {actual:.1f}Hz)")
     if HARDWARE_AVAILABLE and actual < sample_rate_hz * 0.9:
         print(f"[sensor_control] ⚠️  목표 {sample_rate_hz:.0f}Hz 인데 실제로는 {actual:.1f}Hz 로 읽혔습니다.")
         print("    ADS1115 가 못 따라가는 것입니다. 시간축은 실제 시각으로 저장했으니 데이터는")

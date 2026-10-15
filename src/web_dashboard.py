@@ -715,7 +715,10 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         def finisher():
             try:
                 proc.send_signal(signal.SIGINT)   # 정상 종료 경로 -> 모은 데이터 저장
-                proc.wait(timeout=10)
+                # 수집기는 기록을 이미 파일에 써 두고 있어서 남은 일은 마지막 flush·메타·점검뿐이지만,
+                # 밤새 모은 1천만 줄을 점검하는 데는 수십 초가 걸릴 수 있다. 10초로 두었다가
+                # 강제 종료로 메타 파일이 안 남은 적이 있어 넉넉히 기다린다(2026-10-15).
+                proc.wait(timeout=300)
             except subprocess.TimeoutExpired:
                 _job_say("⚠️ 응답이 없어 강제 종료합니다")
                 proc.kill()
