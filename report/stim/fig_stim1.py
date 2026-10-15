@@ -1,4 +1,4 @@
-import sys,numpy as np,pandas as pd,matplotlib
+import sys,numpy as np,pandas as pd,matplotlib,matplotlib.patches
 matplotlib.use("Agg"); import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
 fm.fontManager.addfont("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc")
@@ -16,7 +16,10 @@ ax.set_title("(가) 정상 1회차 — 아무것도 하지 않음",loc="left",fo
 ax.set_xlim(0,30); ax.set_ylabel("전위 (mV)"); ax.set_xlabel("시간 (분)")
 ax=fig.add_subplot(gs[1]); ax.plot(np.arange(len(a))/600,a,color="#2b6cb0",lw=0.6)
 for p in presses: ax.axvline(p/60,color="#c05621" if (p in step_t) else "#a0aec0",lw=0.8,ls="--")
-ax.set_title("(나) 자극 1회차 — 세로 점선이 누른 시각 (주황: 직후 계단이 생긴 4번)",loc="left",fontsize=10)
+ax.set_title("(나) 자극 1회차 — 세로 점선: 누른 시각",loc="left",fontsize=10)
+from matplotlib.lines import Line2D
+H=[Line2D([],[],color="#c05621",lw=1.2,ls="--",label="누른 순간 계단이 생김 (4번)"),Line2D([],[],color="#a0aec0",lw=1.2,ls="--",label="누른 순간 변화 없음 (6번)")]
+ax.legend(handles=H,loc="upper left",fontsize=8,frameon=True)
 ax.set_xlim(0,30); ax.set_ylabel("전위 (mV)"); ax.set_xlabel("시간 (분)")
 ax=fig.add_subplot(gs[2]); tt=np.arange(-200,1200)/10
 for p in presses[:9]:
@@ -24,7 +27,9 @@ for p in presses[:9]:
     hit=(p in step_t)
     ax.plot(tt,seg,color="#c05621" if hit else "#a0aec0",lw=0.9 if hit else 0.7,zorder=3 if hit else 2)
 ax.axvline(0,color="k",lw=0.8); ax.axvspan(-10,0,color="#fbd38d",alpha=0.5,lw=0)
-ax.set_title("(다) 누른 시각 기준으로 겹친 9번 (기록 시각 30~10초 전 중앙값을 0으로 맞춤, 노란 띠: 기록 지연으로 실제로 누른 시각일 수 있는 10초)",loc="left",fontsize=10)
+ax.set_title("(다) 스톱워치에 기록한 시각을 0초에 맞춰 9번을 겹쳐 그림",loc="left",fontsize=10)
+H2=[Line2D([],[],color="#c05621",lw=1.2,label="누른 순간 계단이 생김 (4번)"),Line2D([],[],color="#a0aec0",lw=1.2,label="누른 순간 변화 없음 (5번)"),matplotlib.patches.Patch(color="#fbd38d",alpha=0.6,label="실제로 누른 순간이 있는 구간 (기록이 최대 10초 늦음)")]
+ax.set_ylim(-36,30); ax.legend(handles=H2,loc="lower center",ncol=2,fontsize=8,frameon=True)
 ax.set_xlim(-20,120); ax.set_xlabel("스톱워치에 기록한 시각 뒤 시간 (초)"); ax.set_ylabel("변화 (mV)")
 for ax in fig.axes: ax.grid(alpha=0.3,lw=0.5); ax.tick_params(labelsize=8)
 fig.savefig(out,bbox_inches="tight")
