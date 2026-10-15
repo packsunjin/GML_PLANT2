@@ -756,18 +756,26 @@
   // 식물로 되돌아가면, 대조군 데이터를 식물 폴더에 덮어쓰게 된다.
   // 2026-10-13: 노출하는 조건은 '접촉' 하나다(서버 DATASETS). 예전에 고른 값(식물 등)이 저장돼 있으면
   // 서버가 모르는 이름이라 버튼이 비므로, 아래 loadJobOptions 가 기본값으로 되돌린다.
-  var DS_DEFAULT = "접촉";
+  // 2026-10-15: 기본 조건은 '식물 자극'(정상/자극 분류 실험). '가짜 자극'은 대조군, '접촉'은 예전 손 접촉 데이터.
+  var DS_DEFAULT = "식물 자극";
   var dsPick = DS_DEFAULT, dsList = [];
   try { dsPick = localStorage.getItem("gml.dataset") || DS_DEFAULT; } catch (e) {}
 
-  // 화면에는 정상=비접촉, 자극=접촉으로 보여 준다. 파일·클래스 이름은 그대로다.
-  var STATE_DISP = { "정상": "비접촉", "자극": "접촉" };
+  // 화면에 보일 클래스 이름은 조건마다 다르다(서버 DATASETS 의 disp). 예: 접촉 조건은 정상=비접촉, 자극=접촉.
+  // 파일·클래스 이름은 그대로 정상/자극이다.
+  var STATE_DISP = {};
   function sd(s) { return STATE_DISP[s] || s; }
-  function td(t) { return String(t == null ? "" : t).replace(/정상/g, "비접촉").replace(/자극/g, "접촉"); }
+  function td(t) {
+    var out = String(t == null ? "" : t);
+    Object.keys(STATE_DISP).forEach(function (k) { out = out.split(k).join(STATE_DISP[k]); });
+    return out;
+  }
 
   function dsEl(n) { return $('[data-ds="' + n + '"]'); }
 
   function renderDatasets() {
+    var cur0 = dsList.filter(function (d) { return d.name === dsPick; })[0];
+    STATE_DISP = (cur0 && cur0.disp) || {};
     var box = dsEl("buttons");
     if (!box || !dsList.length) return;
     box.innerHTML = "";
@@ -780,7 +788,7 @@
       setActive(b, d.name === dsPick);
       box.appendChild(b);
     });
-    var note = dsEl("note"), cur = dsList.filter(function (d) { return d.name === dsPick; })[0];
+    var note = dsEl("note"), cur = cur0;
     if (note) note.textContent = cur ? " — " + cur.note : "";
     // 대조군을 고른 상태라는 걸 놓치면 식물 데이터를 덮어썼다고 착각하게 된다.
     var bar = dsEl("bar");

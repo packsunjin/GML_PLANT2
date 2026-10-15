@@ -166,8 +166,18 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
 TOUCH_WINDOW_SEC = 30.0   # 활동전위 수십 초 → 0.01~1Hz 대역에 맞춘 창(band_filter.py)
 TOUCH_STEP_SEC = 5.0
 TOUCH_STATES = ("정상", "자극")
+# 2026-10-15: 정상/자극 분류 실험을 다시 연다(CLAUDE.md 0절 ㉓). 자극 = 나무젓가락으로 갈래를 2초 누르기.
+# '가짜 자극'은 같은 동작으로 화분 테두리를 누른 대조군이다. 정상 파일은 '식물 자극' 것을 같이 쓴다
+# (share_normal_from) — 같은 시간대의 정상을 따로 또 모으면 사람이 앉아 있는 30분이 두 배가 된다.
+# disp = 화면에서 클래스 이름을 바꿔 보여 줄 때 쓰는 표. 파일·클래스 이름은 그대로 정상/자극이다.
 DATASETS = {
-    "접촉": {"title": "접촉 감지 (30초 창)", "dir": None,
+    "식물 자극": {"title": "식물 자극", "dir": "stim", "disp": {},
+                "note": "정상 = 아무것도 안 함, 자극 = 나무젓가락으로 갈래를 2초 누르기(3분 간격)."},
+    "가짜 자극": {"title": "가짜 자극 (대조군)", "dir": "sham", "disp": {"자극": "가짜 자극"},
+                "control": True, "share_normal_from": "식물 자극",
+                "note": "같은 동작으로 화분 테두리를 누름. 정상은 '식물 자극' 것을 같이 쓰므로 "
+                        "여기서는 가짜 자극만 모으세요."},
+    "접촉": {"title": "접촉 감지 (30초 창)", "dir": None, "disp": {"정상": "비접촉", "자극": "접촉"},
              "paths": {"raw": os.path.join("data", "touch", "raw"),
                        "spec": os.path.join("data", "touch2s", "spectrogram"),
                        "features": os.path.join("data", "touch2s", "features.csv"),
@@ -183,7 +193,7 @@ _LEGACY_DATASETS = {
     "사체": {"title": "사체 (죽은 조직)", "dir": "dead",
              "note": "바싹 말린 가지. 생물이었지만 지금은 죽은 것."},
 }
-DEFAULT_DATASET = "접촉"
+DEFAULT_DATASET = "식물 자극"
 
 # 화면 파형용으로 매번 보낼 최근 구간과 다운샘플 비율.
 # 브라우저가 이어붙여 그리므로 폴링을 몇 번 놓쳐도 메울 만큼만 있으면 된다.
@@ -272,7 +282,31 @@ def _payload(result, recent, clf):
         "band": [clf.filter["lowcut"], clf.filter["highcut"]],
         "notch": clf.filter["notch_freq"],
         "window_sec": clf.window_sec,
+        # 화면에 보일 클래스 이름(접촉 모델이면 정상→비접촉 등). 지금 모델이 어느 데이터셋 것인지로 정한다.
+        "disp": _model_disp(clf.model_path),
     }
+
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+_disp_cache = {}
+
+
+def _model_disp(model_path):
+    """모델 파일 위치로 데이터셋을 찾아 그 disp 표를 돌려준다. 옛 접촉 모델(models/touch*)도 접촉으로 본다."""
+    if model_path in _disp_cache:
+        return _disp_cache[model_path]
+    full = os.path.realpath(model_path or "")
+    disp = {}
+    for meta_name, meta in DATASETS.items():
+        mdir = os.path.realpath(os.path.join(_ROOT_DIR, dataset_paths(meta_name)["models"]))
+        if meta_name != "접촉" and meta.get("dir") and full.startswith(mdir + os.sep):
+            disp = dict(meta.get("disp", {}))
+            break
+    else:
+        if os.path.basename(os.path.dirname(full)).startswith("touch"):
+            disp = dict(DATASETS["접촉"]["disp"])
+    _disp_cache[model_path] = disp
+    return disp
 
 
 def _worker(clf, source):
@@ -704,8 +738,10 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         p = dataset_paths(name)
         raw_dir, spec_dir = _abs(p["raw"]), _abs(p["spec"])
         collected, converted, sessions = [], {}, {}
+        share = DATASETS[name].get("share_normal_from")
         for s in TOUCH_STATES:
-            n = sensor_control.count_sessions(raw_dir, s)
+            src_raw = _abs(dataset_paths(share)["raw"]) if (share and s == "정상") else raw_dir
+            n = sensor_control.count_sessions(src_raw, s)
             sessions[s] = n
             if n:
                 collected.append(s)
@@ -734,6 +770,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
             collected, converted, sessions = _ds_counts(name)
             best = _ds_best(name)
             out.append({"name": name, "title": meta["title"], "note": meta["note"],
+                        "disp": meta.get("disp", {}),
                         "collected": collected, "converted": converted,
                         "sessions": sessions,
                         "images": sum(converted.values()),
@@ -750,7 +787,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         base = _ds_best(DEFAULT_DATASET)
         rows, verdict, reason = [], None, None
         for name in DATASETS:
-            if name == DEFAULT_DATASET:
+            if name == DEFAULT_DATASET or not DATASETS[name].get("control"):
                 continue
             b = _ds_best(name)
             same_task = bool(base and b and b.get("task") == base.get("task"))
@@ -759,7 +796,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                          "comparable": same_task})
         done = [r for r in rows if r["best"] and r["comparable"]]
         if not base:
-            reason = "먼저 '식물' 조건을 학습하세요."
+            reason = f"먼저 '{DEFAULT_DATASET}' 조건을 학습하세요."
         elif not done:
             reason = "대조군을 식물과 같은 과제로 학습하면 판정이 나옵니다."
         else:
@@ -794,6 +831,10 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         ds = _pick_dataset(body)
         if ds is None:
             return jsonify({"ok": False, "error": "알 수 없는 데이터셋입니다"}), 400
+        share = DATASETS[ds].get("share_normal_from")
+        if share and state == "정상":
+            return jsonify({"ok": False,
+                            "error": f"'{ds}' 의 정상은 '{share}' 것을 같이 씁니다. 정상은 '{share}' 에서 모으세요"}), 400
 
         # 증폭기가 레일에 붙어 있으면 입력이 변해도 출력이 안 움직인다. 그 상태로
         # 30분을 모아도 전부 못 쓰는 데이터가 되므로, 시작 전에 한 번 보고 막는다.
@@ -849,6 +890,20 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         if ds is None:
             return jsonify({"ok": False, "error": "알 수 없는 데이터셋입니다"}), 400
         p = dataset_paths(ds)
+        share = DATASETS[ds].get("share_normal_from")
+        if share:
+            # 정상 파일을 원본 데이터셋에서 복사해 온다(없거나 원본이 더 새것일 때만).
+            import shutil
+            src_raw, dst_raw = _abs(dataset_paths(share)["raw"]), _abs(p["raw"])
+            os.makedirs(dst_raw, exist_ok=True)
+            if os.path.isdir(src_raw):
+                for n in os.listdir(src_raw):
+                    if not n.startswith("정상"):
+                        continue
+                    a, b = os.path.join(src_raw, n), os.path.join(dst_raw, n)
+                    if os.path.isfile(a) and (not os.path.isfile(b)
+                                              or os.path.getmtime(a) > os.path.getmtime(b)):
+                        shutil.copy2(a, b)
 
         cmd = [sys.executable, "preprocess.py",
                "--raw_dir", os.path.join("..", p["raw"]),
@@ -1230,7 +1285,8 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                         "task_ready": task_ready, "task_reason": task_reason,
                         "hardware": sensor_control.HARDWARE_AVAILABLE,
                         "dataset": ds,
-                        "datasets": [{"name": n, "title": m["title"], "note": m["note"]}
+                        "datasets": [{"name": n, "title": m["title"], "note": m["note"],
+                                      "disp": m.get("disp", {})}
                                      for n, m in DATASETS.items()],
                         "model": clf.model_name, "classes": list(clf.classes)})
 
