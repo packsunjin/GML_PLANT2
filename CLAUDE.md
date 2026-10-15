@@ -797,7 +797,9 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 7절에 **표10(관찰 요약, 표7 을 본보기로 복제)·그림6(`report/FIG_STIM1.png`)**을 넣어 뒤 번호를 밀었다
 > (옛 표10·11 → 표11·12, 옛 그림6 → 그림7). 다시 만들 때: `report/stim/fig_stim1.py 정상_5.csv 자극.csv FIG_STIM1.png`
 > → `report/stim/insert_section7.py 원본 중간본` → `report/hwpx_pics.py 중간본 결과 "■ 그림6 넣을 자리=report/FIG_STIM1.png=42000"`.
-> 자극 1회차 665초 누르기는 약 18초 뒤 다시 +12 mV 올라 머물렀다 — 한 번뿐이라 "판단 보류"로 썼다.
+> 누른 시각은 스톱워치 구간 기록(`data/ds/stim/raw/자극.presses.csv`, 파일 시각 ≈ 기록 + 6초, 기록은 최대 10초 늦음)을 쓴다.
+> 처음엔 "126초 + 3분 간격"으로 가정했는데 9번째는 실제와 23초 어긋났다 — 실제 기록으로 바꿨다(그림은 `fig_stim1.py … 자극.presses.csv`).
+> 계단 4번은 모두 기록 시각 앞 10초 안(실제로 누른 순간)에 있다. 4번째 누르기는 누른 뒤 10~20초에 다시 +12 mV 올라 머물렀다 — "판단 보류".
 >
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서
 > 직접 고친 판이라 `tpl.html → build_docx.py` 로 다시 만들면 그 수정이 날아간다. **아래 빌드는 돌리지 마라.**
