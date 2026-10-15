@@ -9,13 +9,18 @@ def ren(old, new):
 for o, n in [("표11", "표12"), ("표10", "표11"), ("그림6", "그림7")]:
     while re.search(r"<hp:t>[^<]*" + o, x): ren(o, n)
 x = x.replace("표12과 같다", "표12와 같다")
+# 원본에서 가운데 정렬(paraPr 41)로 잘못 들어간 본문 문단 3개를 양쪽 정렬(paraPr 0)로
+for pid in ("296", "329", "361"):
+    m = re.search(r'<hp:p id="' + pid + r'" paraPrIDRef="41"(.*?)</hp:p>', x, re.S); assert m, pid
+    body = re.sub(r"<hp:linesegarray>.*?</hp:linesegarray>", "", m.group(1), flags=re.S)
+    x = x[:m.start()] + '<hp:p id="' + pid + '" paraPrIDRef="0"' + body + "</hp:p>" + x[m.end():]
 nid = max(int(i) for i in re.findall(r'<hp:p id="(\d+)"', x)) + 1
 def para(runs, pp, st=0):
     global nid
     r = "".join(f'<hp:run charPrIDRef="{c}"><hp:t>{escape(t)}</hp:t></hp:run>' for c, t in runs)
     s = f'<hp:p id="{nid}" paraPrIDRef="{pp}" styleIDRef="{st}" pageBreak="0" columnBreak="0" merged="0">{r}</hp:p>'
     nid += 1; return s
-H = lambda t: para([(61, t)], 0); B = lambda t: para([(59, t)], 41)
+H = lambda t: para([(61, t)], 0); B = lambda t: para([(59, t)], 0)   # 본문: 양쪽 정렬·160% (paraPr 41 은 가운데 정렬이라 쓰면 안 됨)
 CAP = lambda n, t: para([(38, n), (44, " " + t)], 19, 28)
 # 2. 표 복제(표7 본보기)
 i = x.find("2단계 구간별 표류"); t = x.find("<hp:tbl", i)
