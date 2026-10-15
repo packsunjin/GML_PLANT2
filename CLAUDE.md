@@ -799,6 +799,9 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > → `report/stim/insert_section7.py 원본 중간본` → `report/hwpx_pics.py 중간본 결과 "■ 그림6 넣을 자리=report/FIG_STIM1.png=42000"`.
 > 누른 시각은 스톱워치 구간 기록(`data/ds/stim/raw/자극.presses.csv`, 파일 시각 ≈ 기록 + 6초, 기록은 최대 10초 늦음)을 쓴다.
 > 처음엔 "126초 + 3분 간격"으로 가정했는데 9번째는 실제와 23초 어긋났다 — 실제 기록으로 바꿨다(그림은 `fig_stim1.py … 자극.presses.csv`).
+> 스펙트로그램 비교 그림 `report/FIG_STIM_SPEC.png`(`report/stim/fig_stim_spec.py`): 조용한 창(정상 300~330초) vs 계단 창
+> (자극 655~685초)을 분류기 입력 그대로(band_filter + compute_spectrogram) 그린 것. 30초 창의 스펙트로그램은 시간 칸 6개·
+> 주파수 칸 13개(0~0.94 Hz)뿐이라 계단은 "창 전체가 밝아짐"으로만 보인다. 아직 보고서에 넣지 않았다.
 > 계단 4번은 모두 기록 시각 앞 10초 안(실제로 누른 순간)에 있다. 4번째 누르기는 누른 뒤 10~20초에 다시 +12 mV 올라 머물렀다 — "판단 보류".
 >
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서
