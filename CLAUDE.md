@@ -824,7 +824,9 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > `hwpx_edit.py 중간본 결과 report/stim/photo2_edit.json BinData/image7.jpg=report/PHOTO2_20261015.jpg` 를 돌린다.
 > 사진1(실험 장치 전체, 2026-10-15 사용자 두 번째 사진을 4:3 으로 잘라 `report/PHOTO1_20261015.jpg`, 파이가 다 보이고 창틀의 다른 회로가 빠진 판)을 "■ 사진1 넣을 자리"에 넣었다(가로 26000, 사진2 와 같은 크기).
 > 다시 만들 때 순서: insert_section7 → hwpx_pics(그림6) → hwpx_edit(사진2 교체) → hwpx_pics("■ 사진1 넣을 자리=report/PHOTO1_20261015.jpg=26000").
-> 표지의 양식 안내문(2026. 11. 1주 … 20페이지 이내 작성)과 혼자 남은 ")" 는 글자를 비웠다(`report/stim/cover_clean.py`, 순서상 맨 마지막).
+> 표지의 양식 안내문(2026. 11. 1주 … 20페이지 이내 작성)과 혼자 남은 ")" 는 글자를 비웠다(`report/stim/cover_clean.py`).
+> 그 뒤 `hwpx_edit.py … report/stim/text_edit.json` 으로 부록 1절(소스코드 목록 최신화), 제언 ⑥, 연구 요약(내용·성과)에 7절을 반영했다(맨 마지막 단계).
+> 연구 요약 성과 끝에 "■ 분류 결과를 채울 자리" 가 있다 — 학습 뒤 채운다.
 > 남은 양식 문제: 쪽수(한글에서만 확인 가능). 학교 마감(10/23)과 안내문의 "11월 1주"가 달라 선생님 확인 필요.
 > 계단 4번은 모두 기록 시각 앞 10초 안(실제로 누른 순간)에 있다. 4번째 누르기는 누른 뒤 10~20초에 다시 +12 mV 올라 머물렀다 — "판단 보류".
 >
