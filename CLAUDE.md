@@ -794,6 +794,10 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 사용자가 보낸 원본은 `report/GML_결과보고서_정리본.hwpx`, 여기에 Ⅳ장 7절(손이 닿지 않는 자극, 0.01–1 Hz)을
 > 넣고 "종합"을 8절로 민 초안이 `report/GML_결과보고서_정리본_자극실험초안.hwpx` 다(2026-10-15). 새 문단은
 > 기존 문단을 본보기로 복사했다(제목 paraPr 0·charPr 61, 본문 paraPr 41·charPr 59). 분류 결과 자리는 "■ 채울 자리".
+> 7절에 **표10(관찰 요약, 표7 을 본보기로 복제)·그림6(`report/FIG_STIM1.png`)**을 넣어 뒤 번호를 밀었다
+> (옛 표10·11 → 표11·12, 옛 그림6 → 그림7). 다시 만들 때: `report/stim/fig_stim1.py 정상_5.csv 자극.csv FIG_STIM1.png`
+> → `report/stim/insert_section7.py 원본 중간본` → `report/hwpx_pics.py 중간본 결과 "■ 그림6 넣을 자리=report/FIG_STIM1.png=42000"`.
+> 자극 1회차 665초 누르기는 약 18초 뒤 다시 +12 mV 올라 머물렀다 — 한 번뿐이라 "판단 보류"로 썼다.
 >
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서
 > 직접 고친 판이라 `tpl.html → build_docx.py` 로 다시 만들면 그 수정이 날아간다. **아래 빌드는 돌리지 마라.**
