@@ -383,7 +383,7 @@ _ADMIN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "..", "data", "admin.json")
 # 처음 실행할 때 자동으로 걸리는 기본 비밀번호. 환경변수로 바꿔 실행할 수 있고,
 # 로그인한 뒤 /api/auth/setup 으로도 바꿀 수 있다.
-DEFAULT_ADMIN_PW = os.environ.get("GML_ADMIN_PW", "3831")
+DEFAULT_ADMIN_PW = os.environ.get("GML_ADMIN_PW", "0000")
 
 
 def _admin_load():
