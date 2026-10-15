@@ -5,8 +5,8 @@ from PIL import Image, ImageDraw, ImageFont
 im = Image.open(sys.argv[1]).convert("RGB"); d = ImageDraw.Draw(im)
 font = ImageFont.truetype("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", 46)
 # (가리킬 점, 글자 상자 왼쪽 위, 글자)
-marks = [((822, 652), (230, 480), "위 측정 핀 (줄기 관통)"),
-         ((822, 740), (200, 860), "아래 측정 핀 (줄기 관통)"),
+marks = [((822, 652), (230, 480), "위 측정 핀 (줄기에 꽂음)"),
+         ((822, 740), (200, 860), "아래 측정 핀 (줄기에 꽂음)"),
          ((1060, 765), (1020, 900), "기준 핀 (흙)"),
          ((1365, 640), (1450, 430), "선 고정 (절연 테이프)")]
 for (px, py), (tx, ty), text in marks:
