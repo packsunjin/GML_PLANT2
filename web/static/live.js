@@ -695,8 +695,10 @@
     if (!j.running) renderCollectHint();
     $$('[data-job="stop"]').forEach(function (b) {
       b.style.display = j.running ? "inline-block" : "none";
-      b.disabled = !!j.stopping;
-      b.textContent = j.stopping ? "중지하는 중…" : "■ 중지";
+      // 중지 중에도 다시 누를 수 있게 둔다. 예전에는 잠가 버려서, 첫 신호가 먹히지 않으면
+      // 서비스를 재시작하는 것 말고는 멈출 방법이 없었다(2026-10-15).
+      b.disabled = false;
+      b.textContent = j.stopping ? "중지하는 중… (안 멈추면 다시 누르기)" : "■ 중지";
       b.style.opacity = j.stopping ? "0.6" : "";
     });
     if (!j.running && jobTimer) {

@@ -674,6 +674,8 @@ git 본문). 위치는 파이와 같은 `data/ds/<stim|sham>/raw/`. 올라온 �
 4. (같은 날 사용자 보고 "중지하는 중이라고만 뜨고 안 멈춤") 안정화 대기(`_settle`, 20초~3분) 중에 중지를 누르면
    `_settle` 이 KeyboardInterrupt 를 삼키고 **대기만 건너뛴 뒤 수집을 정해진 시간 끝까지** 돌렸다. 지금은 `_settle` 이
    False 를 돌려주고 `collect()` 가 파일을 만들지 않고 끝난다(가짜 하드웨어로 2초 만에 끝남 확인).
+   게다가 웹의 중지 버튼이 첫 클릭 뒤 **잠겨서** 다시 보낼 수도 없었다 — 서비스 재시작밖에 방법이 없었다.
+   지금은 중지 중에도 버튼이 살아 있다(`web/static/live.js`). 저장 단계에서는 수집기가 신호를 무시하므로 여러 번 눌러도 안전하다.
 **하드웨어 경로는 파이에서 아직 시험하지 않았다.** 파이에 반영하려면 `src/sensor_control.py`·`src/web_dashboard.py` 를 복사하고
 `sudo systemctl restart plant-dashboard`.
 
