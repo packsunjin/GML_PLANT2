@@ -810,7 +810,9 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 사진2 는 2026-10-15 사용자 사진(원줄기 전극·화분 테두리 테이프 고정)으로 바꿨다 — `report/PHOTO2_20261015.jpg`(2000×1500,
 > 옛 그림과 같은 4:3)를 BinData/image7.jpg 자리에 넣고 캡션을 고침(`report/stim/photo2_edit.json`). 다시 만들 때 마지막에
 > `hwpx_edit.py 중간본 결과 report/stim/photo2_edit.json BinData/image7.jpg=report/PHOTO2_20261015.jpg` 를 돌린다.
-> 남은 양식 문제: 표지 "2026. 11. 1주(추후 공문 안내)" 문구, "■ 사진1 넣을 자리", 쪽수(한글에서만 확인 가능).
+> 사진1(실험 장치 전체, 2026-10-15 사용자 사진 `report/PHOTO1_20261015.jpg`)을 "■ 사진1 넣을 자리"에 넣었다(가로 26000, 사진2 와 같은 크기).
+> 다시 만들 때 순서: insert_section7 → hwpx_pics(그림6) → hwpx_edit(사진2 교체) → hwpx_pics("■ 사진1 넣을 자리=report/PHOTO1_20261015.jpg=26000").
+> 남은 양식 문제: 표지 "2026. 11. 1주(추후 공문 안내)" 문구, 쪽수(한글에서만 확인 가능).
 > 계단 4번은 모두 기록 시각 앞 10초 안(실제로 누른 순간)에 있다. 4번째 누르기는 누른 뒤 10~20초에 다시 +12 mV 올라 머물렀다 — "판단 보류".
 >
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서
