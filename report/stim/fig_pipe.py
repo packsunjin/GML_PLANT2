@@ -79,7 +79,7 @@ lines = [("① 최대–최소 폭", row["peak_to_peak"] * 1000, "mV"),
 txt = "\n".join(f"{n:<9s} {val:7.2f} {u}" for n, val, u in lines)
 ax.text(0.0, 0.97, txt + "\n  …(나머지 8개)", va="top", ha="left", fontsize=8.3,
         transform=ax.transAxes, bbox=dict(boxstyle="round", fc="#f7fafc", ec="#a0aec0"))
-ax.text(0.0, 0.0, "①③④: (나)에 표시  ⑤: (다)에 표시\n②: 0 선에서 얼마나 떨어져 있는지의 평균\n⑥: 뾰족한 봉우리가 있는 정도\n→ 랜덤 포레스트·SVM → 이 창의 자극 확률",
+ax.text(0.0, 0.0, "①③④: (나)에 표시  ⑤: (다)에 표시\n②: 값을 제곱해 평균한 뒤 제곱근 (실효값)\n⑥: 뾰족한 봉우리가 있는 정도\n→ 랜덤 포레스트·SVM → 이 창의 자극 확률",
         va="bottom", ha="left", fontsize=7.6, color="#2b6cb0", transform=ax.transAxes)
 fig.savefig(out, bbox_inches="tight")
 print("창", int(len(F)), "자극 라벨", int(F["y"].sum()), "보기 창 라벨", int(row["y"]))

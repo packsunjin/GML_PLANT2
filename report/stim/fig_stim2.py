@@ -56,10 +56,10 @@ for p in t2[:9]:
     ax.plot(tt, seg, color="#a0aec0", lw=0.7)
 ax.axvline(0, color="k", lw=0.8); ax.axvspan(-2.5, 2.5, color="#fbd38d", alpha=0.5, lw=0)
 ax.set_ylim(-36, 30); ax.set_xlim(-20, 120)
-ax.set_title("(가) 자극 2회차(살짝 댐) — 댄 시각을 0초에 맞춰 9번을 겹쳐 그림 (세로 범위는 그림6(다)와 같음)", loc="left", fontsize=10)
+ax.set_title("(가) 자극 2회차(살짝 댐) — 댄 시각에 맞춰 9번 겹침 (10번째는 기록 끝이라 뺌, 세로 범위 그림6(다)와 같음)", loc="left", fontsize=10)
 ax.set_xlabel("댄 시각 뒤 시간 (초)"); ax.set_ylabel("변화 (mV)")
 ax.legend(handles=[Line2D([], [], color="#a0aec0", lw=1.2, label="댄 뒤 변화 (9번)"),
-                   matplotlib.patches.Patch(color="#fbd38d", alpha=0.6, label="댄 시각의 불확실 구간(±2.5초)")],
+                   matplotlib.patches.Patch(color="#fbd38d", alpha=0.6, label="댄 시각의 불확실 구간 (기록 2.5초 전을 0초로 둠, ±2.5초)")],
           loc="lower center", ncol=2, fontsize=8, frameon=True)
 vmin, vmax = min(S0.min(), S1.min()), max(S0.max(), S1.max())
 for c, (S, ttl) in enumerate([(S0, "(나) 분류기 입력 — 정상 1회차의 조용한 30초"),
@@ -71,8 +71,8 @@ for c, (S, ttl) in enumerate([(S0, "(나) 분류기 입력 — 정상 1회차의
     if c == 0: ax.set_ylabel("주파수 (Hz)")
 cb = fig.colorbar(im, ax=fig.axes[-2:], fraction=0.03, pad=0.01); cb.set_label("세기 (dB)", fontsize=8)
 for r, (k, p, tt_, ttl) in enumerate([
-        ("자극1", p1, t1, "(라) 자극 1회차의 창별 자극 확률 — 자극 2회차·정상 밤샘으로 학습"),
-        ("자극2", p2, t2, "(마) 자극 2회차의 창별 자극 확률 — 자극 1회차·정상 1회차로 학습")]):
+        ("자극1", p1, t1, "(라) 랜덤 포레스트가 판정한 자극 1회차의 창별 자극 확률 — 자극 2회차·정상 밤샘으로 학습"),
+        ("자극2", p2, t2, "(마) 랜덤 포레스트가 판정한 자극 2회차의 창별 자극 확률 — 자극 1회차·정상 1회차로 학습")]):
     ax = fig.add_subplot(gs[2 + r, :]); c = (F[k]["start_s"].to_numpy() + WIN / 2) / 60
     ax.plot(c, p, color="#2b6cb0", lw=1.0)
     for x in tt_: ax.axvline(x / 60, color="#c05621", ls="--", lw=0.7)
