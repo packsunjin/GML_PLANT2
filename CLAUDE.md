@@ -878,6 +878,10 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > report/FIG_PIPE.png`: 30분 기록에서 30초 창·90초 문맥·창별 라벨 띠 → 거른 창 → 스펙트로그램 → 특징 → 모델. 특징 값마다 ①~⑥ 번호를 달아 (나)(다) 그래프의 어디인지 표시)을 넣고
 > 결과 그림은 그림8, /live 는 그림9 로 밀었다. 최종본 순서: finish_report → hwpx_pics("■ 그림7…=FIG_PIPE.png=42000" "■ 그림8…=FIG_STIM2.png=40000")
 > → hwpx_edit(fig8_caption.json) → hwpx_edit(summary_fit.json).
+> 2026-10-17 사용자 "그림8 캡션만 있고 그림이 없다" — **hwpx_pics 로 넣은 그림 문단에 줄 배치(linesegarray)가 없어서 높이 0 으로 놓였다.**
+> 이 문서는 rhwp 변환본(`META-INF/rhwp-hwp5-origin`)이라 보는 프로그램이 문단 높이를 linesegarray 에서 읽는다. 글 문단은 없어도 다시 흘리지만 그림 문단은 안 된다.
+> 그림6·7·8·9·사진1·2·3 일곱 개가 해당. `report/hwpx_picseg.py 원본 결과` 로 채웠고, `hwpx_pics.py` 도 이제 줄 배치를 같이 쓴다.
+> 처음에 "옛 파일을 연 것"이라고 사용자 탓을 했는데 틀렸다. **화면에 안 보인다는 말을 받으면 파일을 먼저 의심한다.**
 > **쪽수는 아직 한글에서 확인 안 함**(새 문단 6개·표·그림이 늘어 약 2쪽 이상 늘었다). 넘치면 그림7 가로 40000 을 줄인다.
 >
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서

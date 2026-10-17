@@ -6,6 +6,7 @@
 import re, sys, zipfile
 from xml.dom import minidom
 from PIL import Image
+from hwpx_picseg import seg  # 그림 문단 줄 배치 — 없으면 그림이 안 보인다
 
 src, dst, specs = sys.argv[1], sys.argv[2], sys.argv[3:]
 zin = zipfile.ZipFile(src)
@@ -42,6 +43,7 @@ for spec in specs:
     para = sec[p0:p1]
     para = para.replace(m.group(0), pic, 1)
     para = re.sub(r"<hp:linesegarray>.*?</hp:linesegarray>", "", para, flags=re.S)
+    para += seg(height)
     sec = sec[:p0] + para + sec[p1:]
     mt = "image/png" if ext == "png" else "image/jpeg"
     item = f'<opf:item id="{name}" href="BinData/{name}.{ext}" media-type="{mt}" isEmbeded="1"/>'
