@@ -32,7 +32,7 @@ def newids(s):
     global nid
     def f(m):
         global nid
-        nid += 1; return f'<hp:p id="{nid}"'
+        i = nid; nid += 1; return f'<hp:p id="{i}"'   # para() 와 같은 규칙: 지금 값을 쓰고 올린다
     return re.sub(r'<hp:p id="\d+"', f, s)
 
 def build_table(tblp, rows, tbl_id=None):
@@ -55,7 +55,9 @@ def build_table(tblp, rows, tbl_id=None):
     t = re.sub(r'(<hp:tbl [^>]*>\s*<hp:sz width="\d+" widthRelTo="\w+" height=")\d+', lambda m: m.group(1) + str(hh + bh * (len(rows) - 1)), t, count=1)
     if tbl_id:
         t = re.sub(r'<hp:tbl id="\d+"', f'<hp:tbl id="{tbl_id}"', t, count=1)
-    return t
+        t = newids(t[:t.find("<hp:tbl")]) + t[t.find("<hp:tbl"):]   # 표를 품은 바깥 문단 id 도 새로(복제 원본과 겹치지 않게)
+    # 줄 배치 정보는 한글이 다시 계산하게 표 문단 전체에서 지운다
+    return re.sub(r"<hp:linesegarray>.*?</hp:linesegarray>", "", t, flags=re.S)
 
 def tbl_para(caption):
     i = x.find(caption); t = x.find("<hp:tbl", i)
