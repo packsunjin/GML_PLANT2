@@ -47,22 +47,39 @@ ax.legend(handles=[Patch(color="#f6ad55", label="보기로 든 창 (655~685초)"
                    Patch(color="#a0aec0", label="라벨 정상")],
           loc="upper left", ncol=3, fontsize=7.5, frameon=True)
 ax = fig.add_subplot(gs[1, 0])
-ax.plot(np.arange(len(seg)) / fs_a, seg * 1000, color="#2f855a", lw=0.9)
+x = np.arange(len(seg)) / fs_a; y = seg * 1000
+ax.plot(x, y, color="#2f855a", lw=0.9, zorder=3)
+m, sd = y.mean(), y.std()
+ax.axhspan(m - sd, m + sd, color="#c6f6d5", alpha=0.8, lw=0, zorder=1)            # ③ 평균 ± 표준편차
+ax.axhline(0, color="0.35", lw=0.7, zorder=2)                                       # ④ 0 선
+nz = y != 0; idx = np.where(np.diff(np.signbit(y)) != 0)[0]
+ax.plot(x[idx], np.zeros(len(idx)), "o", ms=3, color="#805ad5", zorder=4)           # ④ 0 을 지나는 점
+ax.axhline(y.max(), color="#c05621", ls="--", lw=0.7); ax.axhline(y.min(), color="#c05621", ls="--", lw=0.7)
+xa = 26
+ax.annotate("", xy=(xa, y.max()), xytext=(xa, y.min()), arrowprops=dict(arrowstyle="<->", color="#c05621", lw=1))
+ax.text(xa - 0.6, (y.max() + y.min()) / 2, "①", color="#c05621", fontsize=10, ha="right", va="center")
+ax.text(1, m + sd, "③", color="#276749", fontsize=10, va="bottom")
+if len(idx): ax.text(x[idx[0]], 0, " ④", color="#805ad5", fontsize=10, va="top")
 ax.set_title("(나) 0.01–1 Hz 로 거른 창", loc="left", fontsize=10)
 ax.set_xlabel("창 안의 시간 (초)"); ax.set_ylabel("mV"); ax.set_xlim(0, WIN)
 ax = fig.add_subplot(gs[1, 1])
 ax.imshow(S, origin="lower", aspect="auto", extent=[0, WIN, f[0], f[-1]], cmap="viridis", interpolation="nearest")
+c = row["spectral_centroid"]
+ax.axhline(c, color="white", ls="--", lw=1.2); ax.text(0.5, c, " ⑤", color="white", fontsize=10, va="bottom")
 ax.set_title("(다) 스펙트로그램 6×13칸", loc="left", fontsize=10)
 ax.set_xlabel("창 안의 시간 (초)"); ax.set_ylabel("주파수 (Hz)")
 ax = fig.add_subplot(gs[1, 2]); ax.axis("off")
 ax.set_title("(라) 특징 14개 중 일부 → 모델", loc="left", fontsize=10)
-lines = [("최대–최소 폭", row["peak_to_peak"] * 1000, "mV"), ("실효값", row["rms"] * 1000, "mV"),
-         ("표준편차", row["std"] * 1000, "mV"), ("영점 교차율", row["zero_crossing_rate"], ""),
-         ("스펙트럼 중심", row["spectral_centroid"], "Hz"), ("첨도", row["kurtosis"], "")]
-txt = "\n".join(f"{n:<8s} {val:8.2f} {u}" for n, val, u in lines)
-ax.text(0.0, 0.95, txt + "\n  …(나머지 8개)", va="top", ha="left", fontsize=8.5, family="WenQuanYi Zen Hei",
+lines = [("① 최대–최소 폭", row["peak_to_peak"] * 1000, "mV"),
+         ("② 실효값", row["rms"] * 1000, "mV"),
+         ("③ 표준편차", row["std"] * 1000, "mV"),
+         ("④ 영점 교차율", row["zero_crossing_rate"], "번/초"),
+         ("⑤ 스펙트럼 중심", row["spectral_centroid"], "Hz"),
+         ("⑥ 첨도", row["kurtosis"], "")]
+txt = "\n".join(f"{n:<9s} {val:7.2f} {u}" for n, val, u in lines)
+ax.text(0.0, 0.97, txt + "\n  …(나머지 8개)", va="top", ha="left", fontsize=8.3,
         transform=ax.transAxes, bbox=dict(boxstyle="round", fc="#f7fafc", ec="#a0aec0"))
-ax.text(0.0, 0.08, "→ 랜덤 포레스트·SVM\n→ 이 창의 자극 확률", va="bottom", ha="left", fontsize=9,
-        color="#2b6cb0", transform=ax.transAxes)
+ax.text(0.0, 0.0, "①③④: (나)에 표시  ⑤: (다)에 표시\n②: 0 선에서 얼마나 떨어져 있는지의 평균\n⑥: 뾰족한 봉우리가 있는 정도\n→ 랜덤 포레스트·SVM → 이 창의 자극 확률",
+        va="bottom", ha="left", fontsize=7.6, color="#2b6cb0", transform=ax.transAxes)
 fig.savefig(out, bbox_inches="tight")
 print("창", int(len(F)), "자극 라벨", int(F["y"].sum()), "보기 창 라벨", int(row["y"]))

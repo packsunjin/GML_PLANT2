@@ -875,7 +875,7 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 같은 날 "연구 성과 짤림" — 요약 표의 성과 칸은 **높이가 고정**(26982)이라 글이 넘치면 잘린다. 원본 607자는 들어갔고 891자로 늘려서 잘렸다.
 > 522자로 다시 써서 넣었다(`report/stim/summary_fit.json`, 최종본 만들 때 맨 마지막 단계). **이 칸은 600자 안으로 유지한다.**
 > 같은 날 사용자 "CSV·스펙트로그램에서 어느 부분을 뽑아 학습했는지 시각자료가 있냐" — 없었다. **새 그림7**(`report/stim/fig_pipe.py <ml 작업폴더>
-> report/FIG_PIPE.png`: 30분 기록에서 30초 창·90초 문맥·창별 라벨 띠 → 거른 창 → 스펙트로그램 → 특징 → 모델)을 넣고
+> report/FIG_PIPE.png`: 30분 기록에서 30초 창·90초 문맥·창별 라벨 띠 → 거른 창 → 스펙트로그램 → 특징 → 모델. 특징 값마다 ①~⑥ 번호를 달아 (나)(다) 그래프의 어디인지 표시)을 넣고
 > 결과 그림은 그림8, /live 는 그림9 로 밀었다. 최종본 순서: finish_report → hwpx_pics("■ 그림7…=FIG_PIPE.png=42000" "■ 그림8…=FIG_STIM2.png=40000")
 > → hwpx_edit(fig8_caption.json) → hwpx_edit(summary_fit.json).
 > **쪽수는 아직 한글에서 확인 안 함**(새 문단 6개·표·그림이 늘어 약 2쪽 이상 늘었다). 넘치면 그림7 가로 40000 을 줄인다.
