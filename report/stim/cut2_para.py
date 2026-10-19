@@ -1,6 +1,6 @@
 """상처 양성 대조 2차(2026-10-19, 30분) 문단을 7절 밤샘 문단(900058) 뒤에 넣는다. 한계·결론·제언 문장은 cut2_edit.json.
 쓰기: python3 -I cut2_para.py 원본.hwpx 결과.hwpx
-기록: data/ds/stim/_extra/자르기2_20261019.csv (파이 자극_3.csv, 8:27 수집 시작, 약 5분째 자름, 자른 곳→가장 가까운 측정 핀 줄기 따라 약 20 cm — 측정자)"""
+기록: data/ds/stim/_extra/자르기2_20261019.csv (파이 자극_3.csv, 8:27 수집 시작, 약 5분째 자름, 자른 곳→가장 가까운 측정 핀 줄기 따라 약 26 cm(cut2_dist.json) — 측정자)"""
 import sys, zipfile, re
 src, dst = sys.argv[1:3]
 zi = zipfile.ZipFile(src)
