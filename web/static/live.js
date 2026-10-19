@@ -491,7 +491,7 @@
             b.textContent = m;
             modeBox.appendChild(b);
           });
-          selectTrainMode(remembered("mode", "특징"));
+          selectTrainMode("특징");   // 웹 학습은 특징 방식만(예전에 기억한 "둘다"는 무시)
         }
 
         loadTrainHistory();
@@ -608,7 +608,7 @@
 
   function startTrain() {
     if (!trainTaskPick) return;
-    postJob("/api/train", { task: trainTaskPick, mode: trainModePick || "둘다" },
+    postJob("/api/train", { task: trainTaskPick, mode: "특징" },
             trainTaskPick + " 학습");
   }
 

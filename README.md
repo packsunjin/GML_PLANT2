@@ -233,7 +233,7 @@ project/
 | | `전체` | 위 3과제 전부 학습·비교 |
 | **`--mode`** | `픽셀` (기본) | 스펙트로그램 이미지 픽셀 특징(50,176차원 + PCA) → `best_model.joblib` |
 | | `특징` | 명시적 통계/주파수 특징 14개 → `best_model_특징.joblib` |
-| | `둘다` | 픽셀 + 특징 모두 학습 후 비교 |
+| | `둘다` | 픽셀 + 특징 모두 학습 후 비교 (명령줄에서만. 웹은 특징만) |
 
 ```bash
 python3 train.py                               # 3종, 픽셀 (기본)
@@ -580,7 +580,7 @@ curl -X POST http://<파이IP>:5000/api/mode \
 상태별 변환 현황:  정상: ✓ 변환됨 299장   수분부족: 미수집   자극: ✓ 변환됨 31장
 
 과제:  [3종(잠김)] [정상-수분부족(잠김)] [정상-자극] [전체(잠김)]
-방식:  [픽셀] [특징] [둘다]
+방식: 특징 14개 (웹은 2026-10-19 부터 특징 방식만 — 픽셀·둘다는 파이에서 너무 느려 뺐습니다)
 ▶ 학습 시작    '정상-자극' 과제로 학습합니다
 
 최근 학습 결과
@@ -1125,7 +1125,7 @@ curl -c cookie.txt -X POST http://<파이IP>:5000/api/auth/login \
 curl -b cookie.txt -X POST http://<파이IP>:5000/api/preprocess \
      -H "Content-Type: application/json" -d '{"state":"자극"}'   # 하나만
 curl -b cookie.txt -X POST http://<파이IP>:5000/api/train \
-     -H "Content-Type: application/json" -d '{"task":"3종","mode":"둘다"}'
+     -H "Content-Type: application/json" -d '{"task":"정상-자극","mode":"특징"}'
 ```
 
 > 스펙트로그램이 하나도 없으면 학습은 `409`로 막고 "전처리를 먼저 하세요"라고 알려줍니다.
@@ -1158,7 +1158,7 @@ curl -X POST http://<파이IP>:5000/api/collect \
      -H "Content-Type: application/json" -d '{"state":"수분부족","duration":30}'
 
 curl -X POST http://<파이IP>:5000/api/train \
-     -H "Content-Type: application/json" -d '{"task":"3종","mode":"둘다"}'
+     -H "Content-Type: application/json" -d '{"task":"정상-자극","mode":"특징"}'
 
 curl http://<파이IP>:5000/api/job          # 진행 상황 + 로그
 curl http://<파이IP>:5000/api/train/options # 선택 가능한 값, 수집된 상태, 현재 모델

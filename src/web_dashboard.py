@@ -656,7 +656,9 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     src_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.abspath(os.path.join(src_dir, ".."))
     TASKS = ("정상-자극",)                  # 접촉/비접촉. 나머지 과제는 폐기
-    MODES = ("특징", "픽셀", "둘다")        # 실시간 모델은 특징 방식(표10). 기본도 특징
+    # 2026-10-19: 웹 학습은 특징 방식만 연다. 픽셀(그림) 방식은 정상 창 수천 장을 50,176차원으로 PCA 해
+    # 파이에서 너무 오래 걸리고, 실시간 모델·보고서 표11 도 특징 방식이다(0절 ㉛).
+    MODES = ("특징",)
     # train.py의 TASKS와 같은 정의. 과제별로 스펙트로그램이 갖춰졌는지 판단하는 데 쓴다.
     TASK_CLASSES = {"정상-자극": ["정상", "자극"]}
 
@@ -954,7 +956,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         학습이 끝나면 돌고 있는 분류기에 새 모델을 바로 반영한다."""
         body = request.get_json(silent=True) or {}
         task = body.get("task", "정상-자극")
-        mode = body.get("mode", "둘다")
+        mode = body.get("mode", "특징")
         if task not in TASKS or mode not in MODES:
             return jsonify({"ok": False, "error": "알 수 없는 학습 옵션입니다"}), 400
 
