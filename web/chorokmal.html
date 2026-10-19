@@ -54,7 +54,6 @@
     <button type="button" data-admin-tab="collect">1 · 수집</button>
     <button type="button" data-admin-tab="prep">2 · 변환</button>
     <button type="button" data-admin-tab="train">3 · 학습</button>
-    <button type="button" data-admin-tab="control">대조군</button>
     <button type="button" data-admin-tab="files">자료</button>
     <button type="button" data-admin-tab="sensor">센서</button>
   </p>
@@ -112,21 +111,6 @@
     <hr>
     <p><b>최근 학습 결과</b></p>
     <div data-job="train-history"><p>아직 학습 기록이 없어요</p></div>
-  </div>
-
-  <!-- 대조군 — 이 연구의 핵심 질문에 답하는 화면 -->
-  <div data-admin-pane="control" style="display:none">
-    <p><b>지금 잡히는 신호가 정말 식물에서 오는가?</b></p>
-    <p>같은 동작으로 식물 대신 <b>화분 테두리</b>를 누르는 <b>가짜 자극</b>을 같은 절차로 수집·학습합니다.
-       식물을 건드리지 않았는데도 정확도가 높게 나오면, 그 정확도는 식물이 아니라
-       <b>측정계나 주변 환경</b>에서 온 것입니다.</p>
-    <ol>
-      <li>위 <b>측정 대상</b>에서 <b>가짜 자극 (대조군)</b>을 고릅니다</li>
-      <li>식물과 <b>같은 상태·같은 길이</b>로 수집 → 변환 → 학습</li>
-      <li>아래 판정을 봅니다 (식물과 <b>같은 과제</b>로 학습해야 비교됩니다)</li>
-    </ol>
-    <div data-control="verdict"></div>
-    <div data-control="table"></div>
   </div>
 
   <!-- 자료 -->

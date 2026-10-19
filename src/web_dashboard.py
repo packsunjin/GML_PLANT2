@@ -173,6 +173,9 @@ TOUCH_STATES = ("정상", "자극")
 DATASETS = {
     "식물 자극": {"title": "식물 자극", "dir": "stim", "disp": {},
                 "note": "정상 = 아무것도 안 함, 자극 = 안경통으로 핀 없는 갈래 윗부분을 2초 누르기(처음 2분 대기, 3분 간격)."},
+}
+# 예전 조건. 화면에는 내보내지 않는다. 가짜 자극·접촉은 2026-10-19 에 뺐다(측정 안 함·보고서에 안 씀, 0절 ㉗). 되살리려면 위 DATASETS 에 옮기고 DEFAULT_DATASET 을 확인할 것.
+_LEGACY_DATASETS = {
     "가짜 자극": {"title": "가짜 자극 (대조군)", "dir": "sham", "disp": {"자극": "가짜 자극"},
                 "control": True, "share_normal_from": "식물 자극",
                 "note": "같은 동작으로 화분 테두리를 누름. 정상은 '식물 자극' 것을 같이 쓰므로 "
@@ -183,9 +186,6 @@ DATASETS = {
                        "features": os.path.join("data", "touch2s", "features.csv"),
                        "models": os.path.join("models", "touch")},
              "note": "손이 식물에 닿았나(접촉) 아닌가(비접촉). 정상=비접촉, 자극=접촉 파일로 학습합니다."},
-}
-# 예전 조건. 화면에는 내보내지 않는다. 되살리려면 위 DATASETS 에 옮기고 DEFAULT_DATASET 을 확인할 것.
-_LEGACY_DATASETS = {
     "식물": {"title": "식물 (기준)", "dir": None,
              "note": "살아 있는 방울토마토. 비교의 기준이 되는 조건입니다."},
     "호일": {"title": "호일 (도체 대조)", "dir": "foil",
@@ -304,7 +304,7 @@ def _model_disp(model_path):
             break
     else:
         if os.path.basename(os.path.dirname(full)).startswith("touch"):
-            disp = dict(DATASETS["접촉"]["disp"])
+            disp = dict(_LEGACY_DATASETS["접촉"]["disp"])
     _disp_cache[model_path] = disp
     return disp
 
