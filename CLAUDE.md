@@ -963,6 +963,10 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 식물 상태(2026-10-17 사용자): 줄기 속 초록, 사진1(10-15) 찍기 전날 물 줌 → `report/stim/plant_state.json`(review2_struct 다음 단계).
 > 측정 환경(2026-10-19 사용자): 교실 LED 조명. 온도는 측정일 기록이 없어 10-19 같은 자리에서 잰 26.75 ℃ 를 사용자 결정("날씨가 크게 안 변하니 대략값")으로 "약 27 ℃"로만 적음(측정일 표기·습도 59.5 % 는 뺌, `temp_edit2.json`) → `report/stim/env_edit.json`·`temp_edit.json`(wiring_para 다음 단계), README 재현 순서에도 적음.
 > 남은 것(사용자 몫): 그림9 를 지금 30초 창 화면으로 다시 캡처, 그림5(나) "손이 닿은 동안"(데이터가 파이에만 있음).
+> 2026-10-19 그림9 교체 — 사용자가 보낸 /live 캡처(손 안 댐, 자극 54 %)의 빈 아래쪽을 잘라 `report/LIVE_30s.png`(1264×722)로 두고
+> `report/hwpx_repic.py 원본 결과 image9 report/LIVE_30s.png`(가로 유지·세로를 새 비율로) → `hwpx_edit.py … report/stim/live30_edit.json`(캡션: 웹 30초 창 모델,
+> 부록: 오경보율 55.6 % 라 손 안 대도 자극 50 % 안팎). 같은 날 사용자 "사진 비율이 안 맞지 않나" — 12장 모두 칸·그림 비율 차이 0.0 % 확인.
+> **비율이 다른 그림으로 바꿀 때는 hwpx_edit 의 BinData 바꾸기 말고 hwpx_repic.py 를 쓴다.**
 > **쪽수는 아직 한글에서 확인 안 함**(새 문단 6개·표·그림이 늘어 약 2쪽 이상 늘었다). 넘치면 그림7 가로 40000 을 줄인다.
 >
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서
