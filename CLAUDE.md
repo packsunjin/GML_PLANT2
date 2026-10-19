@@ -1002,6 +1002,7 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 안 쓰던 image6(0.5–20 Hz·10초 창 옛 그림)을 착각한 것. 오해를 막으려고 image6 을 파일에서 지웠다(`report/stim/drop_image6.py`, 맨 마지막).
 > `review5_fix.json`: 분류기 설명에 scikit-learn[10] 인용(본문에 [10]이 없었다), 분석 방법에 "구간 표류의 합 ≠ 전체 표류"(47.92+11.04 ≠ 59.20, 30초 평균 경계 차이). → `review6_fix.json` 으로 이유까지 적은 문장으로 바꿈.
 > 2026-10-19 저녁 상처 양성 대조 2차(30분)는 **보고서에 넣었다** — 7절 문단 900071(`report/stim/cut2_para.py`), 한계·결론·제언 ④(`cut2_edit.json`), 그 뒤 hwpx_fillseg. 6분짜리 1차는 여전히 안 넣는다.
+> 같은 날 검토 반영: 표10 에 상처 자극 줄(`report/stim/cut2_table.py`, 행 복제·rowCnt 8·높이 14400), 표12 근거·연구 요약 성과·결론 연구문제 2 문장(`cut2_review.json`), 그 뒤 hwpx_fillseg.
 > **쪽수는 아직 한글에서 확인 안 함**(새 문단 6개·표·그림이 늘어 약 2쪽 이상 늘었다). 넘치면 그림7 가로 40000 을 줄인다.
 >
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서
