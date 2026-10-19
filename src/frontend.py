@@ -260,7 +260,8 @@ class DCFrontend(Frontend):
     hpf_hz = 0.0            # DC 결합 — 고역통과 없음
     lpf_hz = 0.0            # 설정된 저역통과 없음(샘플레이트가 한계)
 
-    # ADS1115 PGA 설정별 측정 범위(V). 16배가 이 용도에 맞다.
+    # ADS1115 PGA 설정별 측정 범위(V). 전극을 단 측정은 표류가 수백 mV 라 2배(±2.048 V)가 기본이다.
+    # 16배(±0.256 V)는 입력을 단락한 1단계에서만 쓴다 — GML_PGA=16 으로 켠다(0절 ㉖).
     PGA_RANGE_V = {1: 4.096, 2: 2.048, 4: 1.024, 8: 0.512, 16: 0.256}
 
     def __init__(self, pga=None, ref=False):
@@ -269,13 +270,13 @@ class DCFrontend(Frontend):
         # 환경변수면 import 시점에 한 번만 만들어진다.
         if pga is None:
             try:
-                pga = int(os.environ.get("GML_PGA", "16"))
+                pga = int(os.environ.get("GML_PGA", "2"))
             except ValueError:
-                pga = 16
+                pga = 2
         self._chan = None
         self._chan_ref = None
         self.has_ref = bool(ref)
-        self.pga = pga if pga in self.PGA_RANGE_V else 16
+        self.pga = pga if pga in self.PGA_RANGE_V else 2
         span_v = self.PGA_RANGE_V[self.pga]
         self.input_span_mv = span_v * 1000.0
         self.resolution_uv = span_v * 2 / 65536 * 1e6

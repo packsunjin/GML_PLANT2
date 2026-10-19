@@ -394,7 +394,7 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     if repaired_windows:
         print(f"    [보정] fast-restore 강하 제거 — {repaired_windows}창에서 {repaired_samples}샘플 보간")
     if quality and not hw_like:
-        print("    [품질] 0V 중심 신호라 레일 포화 검사는 건너뜁니다(시뮬레이션 데이터).")
+        print("    [품질] 0V 중심 신호(DC 차동 앞단·시뮬레이션)라 레일 포화 검사는 건너뜁니다.")
     total_win = count + skipped_rail + skipped_clip + skipped_flat + skipped_quiet + skipped_ctx
     print(f"  {fname} -> 클래스 '{cls}': {count}개 스펙트로그램 이미지 생성"
           + (f"  (전체 {total_win}창 중 {100.0*count/total_win:.0f}% 사용)" if total_win else ""))
