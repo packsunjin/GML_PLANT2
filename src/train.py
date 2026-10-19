@@ -51,7 +51,8 @@ import tempfile
 _CACHE_DIR = None
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import (accuracy_score, balanced_accuracy_score, precision_score, recall_score,
+                             confusion_matrix, ConfusionMatrixDisplay)
 from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -174,22 +175,64 @@ def _parse_img_name(img_name):
 def load_dataset(spectrogram_dir, classes):
     """픽셀 모드: data/spectrogram/<상태>/*.png -> grayscale flatten 특징.
     classes에 포함된 상태 폴더만 읽고, 라벨은 classes에서의 순서(index)로 매긴다.
-    시간순 그룹 분할을 위해 (원본 상태, 윈도우 오프셋)도 함께 반환한다."""
-    X, y, groups, order = [], [], [], []
+    시간순 그룹 분할을 위해 (원본 상태, 윈도우 오프셋)도 함께 반환한다.
+    밤샘 기록은 창이 수천 장이라, 리스트에 모았다가 np.array 로 바꾸면 메모리가 두 배로
+    든다(파이 8 GB). float32 배열을 미리 잡아 바로 채운다."""
+    items = []
     for label_idx, cls in enumerate(classes):
         cls_dir = os.path.join(spectrogram_dir, cls)
-        paths = sorted(glob.glob(os.path.join(cls_dir, "*.png")))
-        for p in paths:
-            img = Image.open(p).convert("L")  # grayscale, 고정 크기
-            if img.size != (IMG_SIZE, IMG_SIZE):  # 저장 시 이미 IMG_SIZE로 렌더링되므로 보통 그대로 통과
-                img = img.resize((IMG_SIZE, IMG_SIZE))
-            arr = np.asarray(img, dtype=np.float32).flatten() / 255.0
-            src, off = _parse_img_name(os.path.basename(p))
-            X.append(arr)
-            y.append(label_idx)
-            groups.append(src)
-            order.append(off)
-    return np.array(X), np.array(y), np.array(groups), np.array(order)
+        items += [(p, label_idx) for p in sorted(glob.glob(os.path.join(cls_dir, "*.png")))]
+    X = np.empty((len(items), IMG_SIZE * IMG_SIZE), dtype=np.float32)
+    y, groups, order = [], [], []
+    for i, (p, label_idx) in enumerate(items):
+        img = Image.open(p).convert("L")  # grayscale, 고정 크기
+        if img.size != (IMG_SIZE, IMG_SIZE):  # 저장 시 이미 IMG_SIZE로 렌더링되므로 보통 그대로 통과
+            img = img.resize((IMG_SIZE, IMG_SIZE))
+        X[i] = np.asarray(img, dtype=np.float32).ravel() / 255.0
+        src, off = _parse_img_name(os.path.basename(p))
+        y.append(label_idx)
+        groups.append(src)
+        order.append(off)
+    return X, np.array(y), np.array(groups), np.array(order)
+
+
+def session_labels(groups, y, classes):
+    """창마다 '그 창이 속한 회차의 상태'를 돌려준다(분할용).
+
+    누른 시각 라벨(preprocess.PRESS_SUFFIX)을 쓰면 자극 회차 안에도 정상 창이 생긴다.
+    회차를 상태별로 나눠 평가 회차를 고를 때 창 라벨을 쓰면 회차 하나가 두 상태로
+    갈라져 버리므로, 회차 이름('자극_2' → '자극')에서 상태를 읽는다. 모르는 이름이면 창 라벨."""
+    idx = {c: i for i, c in enumerate(classes)}
+    out = []
+    for g, lab in zip(groups, y):
+        head = os.path.splitext(str(g))[0].split("_")[0]
+        out.append(idx.get(head, lab))
+    return np.array(out)
+
+
+def balance_train(X, y, seed=0):
+    """학습 분할에서 많은 클래스를 가장 적은 클래스 수만큼 무작위로 줄인다.
+
+    정상 밤샘 기록이 들어오면 정상 창이 자극 창의 100배가 넘는다. 그대로 학습하면
+    '모두 정상'이라고만 답해도 정확도가 99% 라 모델이 자극을 배우지 않는다(0절 ㉗).
+    평가 분할은 줄이지 않는다 — 실제 비율에서의 오경보율을 봐야 하기 때문이다."""
+    rng = np.random.default_rng(seed)
+    labs, counts = np.unique(y, return_counts=True)
+    n_min = int(counts.min())
+    keep = np.concatenate([rng.permutation(np.where(y == l)[0])[:n_min] for l in labs])
+    keep.sort()
+    return X[keep], y[keep]
+
+
+def binary_report(y_true, y_pred):
+    """2종(정상=0, 자극=1) 평가 지표. 자극 창을 몇 개 찾았는지·오경보율·균형 정확도."""
+    y_true = np.asarray(y_true); y_pred = np.asarray(y_pred)
+    tp = int(((y_pred == 1) & (y_true == 1)).sum()); fn = int(((y_pred == 0) & (y_true == 1)).sum())
+    fp = int(((y_pred == 1) & (y_true == 0)).sum()); tn = int(((y_pred == 0) & (y_true == 0)).sum())
+    return {"hits": tp, "positives": tp + fn, "false_alarms": fp, "negatives": fp + tn,
+            "false_alarm_rate": fp / max(1, fp + tn),
+            "balanced_accuracy": float(balanced_accuracy_score(y_true, y_pred))
+            if len(np.unique(y_true)) > 1 else None}
 
 
 NO_SLOW = False
@@ -358,11 +401,30 @@ def cross_session_scores(model, X, y, groups, labels, max_folds=MAX_CV_SESSION_F
         te = np.isin(groups, held)
         if te.all() or not te.any():
             continue
+        Xtr, ytr = balance_train(X[~te], y[~te])
+        if len(np.unique(ytr)) < 2 or len(np.unique(y[te])) < 2:
+            continue
         m = clone(model)
-        m.fit(X[~te], y[~te])
-        accs.append(float(m.score(X[te], y[te])))
+        m.fit(Xtr, ytr)
+        # 정상 창이 훨씬 많아 그냥 정확도는 '모두 정상'만으로도 높게 나온다 → 균형 정확도
+        accs.append(float(balanced_accuracy_score(y[te], m.predict(X[te]))))
         used.append(held)
     return (np.array(accs), used) if accs else (None, None)
+
+
+def _scores(model, best_params, y_test, y_pred, avg):
+    res = {
+        "model": model,
+        "best_params": best_params,
+        "accuracy": accuracy_score(y_test, y_pred),
+        "precision": precision_score(y_test, y_pred, average=avg, zero_division=0),
+        "recall": recall_score(y_test, y_pred, average=avg, zero_division=0),
+        "balanced_accuracy": float(balanced_accuracy_score(y_test, y_pred)),
+        "y_pred": y_pred,
+    }
+    if avg == "binary":
+        res.update(binary_report(y_test, y_pred))
+    return res
 
 
 def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pixel",
@@ -390,7 +452,9 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
     # 50,176차원 PCA라 전체 학습 시간의 대부분을 차지한다(후보 12개 x 5겹이면 PCA를
     # 60번 계산). memory= 를 주면 같은 폴드의 앞단 결과를 재사용해 5번만 계산한다.
     cache = Memory(location=_pipeline_cache_dir(), verbose=0)
-    svm_pipe = Pipeline([("scaler", StandardScaler())] + pca_step + [("svm", SVC(probability=True))],
+    # 학습 분할은 balance_train 으로 이미 1:1 이지만, 그래도 남는 치우침에 대비해 class_weight 를 건다.
+    svm_pipe = Pipeline([("scaler", StandardScaler())] + pca_step
+                        + [("svm", SVC(probability=True, class_weight="balanced"))],
                         memory=cache)
     svm_param_grid = {
         "svm__kernel": ["linear", "rbf"],
@@ -401,23 +465,18 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
     print(f"[train] ({tag}) SVM GridSearchCV 시작: 후보 {n_svm}개 x {cv_folds}겹 = {n_svm*cv_folds}회 학습…")
     # verbose=1: 학습기가 fold 하나 끝날 때마다 한 줄씩 찍는다. 이게 없으면 GridSearchCV가
     # 몇 분씩 아무 출력 없이 도는 동안 웹 로그가 멈춘 것처럼 보인다.
-    svm_grid = GridSearchCV(svm_pipe, svm_param_grid, cv=cv_folds, n_jobs=-1, verbose=1)
+    svm_grid = GridSearchCV(svm_pipe, svm_param_grid, cv=cv_folds, n_jobs=-1, verbose=1,
+                            scoring="balanced_accuracy")
     svm_grid.fit(X_train, y_train)
     svm_best = svm_grid.best_estimator_
     y_pred_svm = svm_best.predict(X_test)
     print(f"[train] ({tag}) SVM 완료 -> 최적 파라미터 {svm_grid.best_params_}")
 
-    results["SVM"] = {
-        "model": svm_best,
-        "best_params": svm_grid.best_params_,
-        "accuracy": accuracy_score(y_test, y_pred_svm),
-        "precision": precision_score(y_test, y_pred_svm, average=avg, zero_division=0),
-        "recall": recall_score(y_test, y_pred_svm, average=avg, zero_division=0),
-        "y_pred": y_pred_svm,
-    }
+    results["SVM"] = _scores(svm_best, svm_grid.best_params_, y_test, y_pred_svm, avg)
 
     # ---- Random Forest via GridSearchCV ----
-    rf_pipe = Pipeline([("scaler", StandardScaler())] + pca_step + [("rf", RandomForestClassifier(random_state=42))],
+    rf_pipe = Pipeline([("scaler", StandardScaler())] + pca_step
+                       + [("rf", RandomForestClassifier(random_state=42, class_weight="balanced"))],
                        memory=cache)
     rf_param_grid = {
         "rf__n_estimators": [100, 200],
@@ -425,20 +484,14 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
     }
     n_rf = np.prod([len(v) for v in rf_param_grid.values()])
     print(f"[train] ({tag}) RandomForest GridSearchCV 시작: 후보 {n_rf}개 x {cv_folds}겹 = {n_rf*cv_folds}회 학습…")
-    rf_grid = GridSearchCV(rf_pipe, rf_param_grid, cv=cv_folds, n_jobs=-1, verbose=1)
+    rf_grid = GridSearchCV(rf_pipe, rf_param_grid, cv=cv_folds, n_jobs=-1, verbose=1,
+                           scoring="balanced_accuracy")
     rf_grid.fit(X_train, y_train)
     rf_best = rf_grid.best_estimator_
     y_pred_rf = rf_best.predict(X_test)
     print(f"[train] ({tag}) RandomForest 완료 -> 최적 파라미터 {rf_grid.best_params_}")
 
-    results["RandomForest"] = {
-        "model": rf_best,
-        "best_params": rf_grid.best_params_,
-        "accuracy": accuracy_score(y_test, y_pred_rf),
-        "precision": precision_score(y_test, y_pred_rf, average=avg, zero_division=0),
-        "recall": recall_score(y_test, y_pred_rf, average=avg, zero_division=0),
-        "y_pred": y_pred_rf,
-    }
+    results["RandomForest"] = _scores(rf_best, rf_grid.best_params_, y_test, y_pred_rf, avg)
 
     # ---- 리포트 출력 + confusion matrix 저장 ----
     os.makedirs(out_dir, exist_ok=True)
@@ -449,6 +502,11 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
         print(f"Accuracy : {res['accuracy']:.4f}")
         print(f"Precision: {res['precision']:.4f}  ({avg})")
         print(f"Recall   : {res['recall']:.4f}  ({avg})")
+        if res.get("hits") is not None:
+            ba = res["balanced_accuracy"]
+            print(f"자극 창 찾음: {res['hits']}/{res['positives']} · 오경보 {res['false_alarms']}/{res['negatives']}"
+                  f" ({res['false_alarm_rate']*100:.1f}%) · 균형 정확도 "
+                  f"{'—' if ba is None else f'{ba:.4f}'}")
 
         cm = confusion_matrix(y_test, res["y_pred"], labels=list(range(len(classes))))
         title = (f"{name} 혼동행렬" if _KOREAN_FONT else f"{name} Confusion Matrix") + f" ({tag})"
@@ -481,8 +539,10 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
     #     막지만, 같은 세션이 학습·평가 양쪽에 들어가는 것 자체는 못 막는다.
     guard = overlap_guard()
     # labels 는 **클래스**여야 한다. 여기에 groups 를 넘기면 세션마다 라벨이 달라져
-    # '상태마다 세션이 하나뿐'으로 잘못 판단한다.
-    split = session_holdout_split(X, y, groups, y, test_size=0.3)
+    # '상태마다 세션이 하나뿐'으로 잘못 판단한다. 누른 시각 라벨을 쓰면 자극 회차 안에도
+    # 정상 창이 있으므로, 창 라벨이 아니라 회차의 상태(session_labels)로 나눈다.
+    sess_lab = session_labels(groups, y, classes)
+    split = session_holdout_split(X, y, groups, sess_lab, test_size=0.3)
     if split is not None:
         X_train, X_test, y_train, y_test, held = split
         print(f"[train] ({tag_prefix}) Train={len(y_train)}, Test={len(y_test)} "
@@ -496,24 +556,47 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
         print(f"[train]     이 정확도는 식물 상태가 아니라 그 세션의 측정 조건을 학습한")
         print(f"[train]     결과일 수 있습니다. 상태마다 2회 이상 나눠 수집하세요.")
 
+    validate_classes(y_test, classes, context="평가 분할(test split)")
+    before = {c: int(np.sum(y_train == i)) for i, c in enumerate(classes)}
+    X_train, y_train = balance_train(X_train, y_train)
+    after = {c: int(np.sum(y_train == i)) for i, c in enumerate(classes)}
+    print(f"[train] ({tag_prefix}) 학습 분할 균형 맞춤: {before} -> {after} "
+          f"(많은 쪽을 무작위로 줄임, 평가 분할은 그대로)")
+
     cv_folds = cv_folds_for(y_train, classes)
     results, file_suffix, tag = train_and_eval(X_train, X_test, y_train, y_test, models_dir,
                                                 classes, mode=mode, cv_folds=cv_folds, task=task)
 
-    best_name = max(results, key=lambda k: results[k]["accuracy"])
+    # 정상이 대부분인 평가 분할에서는 '모두 정상'도 정확도가 높다. 균형 정확도로 고른다.
+    best_name = max(results, key=lambda k: results[k]["balanced_accuracy"])
     best_res = results[best_name]
     best_model = best_res["model"]
     best_acc = best_res["accuracy"]
+    best_bal = best_res["balanced_accuracy"]
+
+    # 비교 기준: '모두 정상'이라고만 답했을 때(자극 0개 찾음, 오경보 0, 균형 정확도 0.5)
+    baseline = None
+    if len(classes) == 2:
+        all_normal = np.zeros(len(y_test), dtype=int)
+        baseline = {"accuracy": float(accuracy_score(y_test, all_normal)),
+                    **binary_report(y_test, all_normal)}
+        print(f"[train] ({tag_prefix}) 비교 — '모두 정상'이라고만 답하면: 정확도 {baseline['accuracy']*100:.1f}% · "
+              f"자극 0/{baseline['positives']} · 오경보 0% · 균형 정확도 0.5000")
+        print(f"[train] ({tag_prefix}) 최적 {best_name}: 자극 창 {best_res['hits']}/{best_res['positives']} 찾음 · "
+              f"오경보율 {best_res['false_alarm_rate']*100:.1f}% · 균형 정확도 {best_bal:.4f} "
+              f"(정확도 {best_acc*100:.1f}%)")
+        if best_bal <= 0.5:
+            print(f"[train] ⚠️  균형 정확도가 0.5 이하 — '모두 정상'보다 나을 것이 없습니다(자극 창을 가르지 못함).")
 
     # 분할을 한 번만 하면 어느 세션이 평가로 빠졌느냐에 따라 결과가 통째로 달라진다.
     # 흔들리는 폭을 함께 봐야 그 한 숫자를 믿어도 되는지 알 수 있다.
-    cv_acc, cv_used = cross_session_scores(best_model, X, y, groups, y)
+    cv_acc, cv_used = cross_session_scores(best_model, X, y, groups, sess_lab)
     cv_summary = None
     if cv_acc is not None and len(cv_acc) >= 2:
         cv_summary = {"mean": float(cv_acc.mean()), "min": float(cv_acc.min()),
                       "max": float(cv_acc.max()), "std": float(cv_acc.std()),
-                      "folds": len(cv_acc)}
-        print(f"[train] ({tag_prefix}) 세션 교차검증 {len(cv_acc)}회: "
+                      "folds": len(cv_acc), "metric": "balanced_accuracy"}
+        print(f"[train] ({tag_prefix}) 세션 교차검증(균형 정확도) {len(cv_acc)}회: "
               f"평균 {cv_acc.mean()*100:.1f}% · 범위 {cv_acc.min()*100:.1f}~{cv_acc.max()*100:.1f}% "
               f"· 표준편차 {cv_acc.std()*100:.1f}%p")
         if cv_acc.std() > 0.10:
@@ -541,16 +624,23 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
     joblib.dump(results["RandomForest"]["model"], os.path.join(models_dir, f"rf_model{file_suffix}.joblib"))
 
     duration_sec = time.time() - t0
-    print(f"\n[train] ({tag}) 최적 모델: {best_name} (Accuracy={best_acc:.4f}, {duration_sec:.1f}초) -> {best_path}")
-    if best_acc >= 0.70:
-        print(f"[train] ({tag}) ✅ 검증 요구사항 충족: Accuracy 70% 이상 달성")
+    print(f"\n[train] ({tag}) 최적 모델: {best_name} (균형 정확도={best_bal:.4f}, Accuracy={best_acc:.4f}, "
+          f"{duration_sec:.1f}초) -> {best_path}")
+    # 정확도 70% 기준은 정상이 대부분인 평가에서 '모두 정상'만으로도 넘는다 → 균형 정확도로 본다.
+    if best_bal >= 0.70:
+        print(f"[train] ({tag}) ✅ 균형 정확도 70% 이상")
     else:
-        print(f"[train] ({tag}) ⚠️ Accuracy가 70% 미만입니다. 데이터/파라미터를 조정하세요.")
+        print(f"[train] ({tag}) ⚠️ 균형 정확도가 70% 미만입니다.")
 
     _append_history(models_dir, {
         "cross_session": cv_summary,
         "task": task, "mode": MODE_KO[mode], "trained_at": time.time(),
         "best_name": best_name, "accuracy": best_acc,
+        "balanced_accuracy": best_bal,
+        "hits": best_res.get("hits"), "positives": best_res.get("positives"),
+        "false_alarms": best_res.get("false_alarms"), "negatives": best_res.get("negatives"),
+        "false_alarm_rate": best_res.get("false_alarm_rate"),
+        "baseline_all_normal": baseline,
         "precision": best_res["precision"], "recall": best_res["recall"],
         "classes": classes, "counts": counts,
         "train_n": len(y_train), "test_n": len(y_test),
@@ -558,7 +648,7 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
         "model_file": os.path.basename(best_path),
     })
 
-    return results, best_name, best_acc
+    return results, best_name, best_bal
 
 
 def run_task(task, mode, args):
@@ -629,7 +719,7 @@ def main():
     if len(summary) > 1:
         print("\n=== 전체 비교 (과제 x 방식) ===")
         for (mode_ko, task), (name, acc) in summary.items():
-            print(f"  [{task:10s}] {mode_ko:4s}: 최적 모델={name:14s} Accuracy={acc:.4f}")
+            print(f"  [{task:10s}] {mode_ko:4s}: 최적 모델={name:14s} 균형 정확도={acc:.4f}")
 
 
 if __name__ == "__main__":

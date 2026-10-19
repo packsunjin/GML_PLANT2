@@ -657,6 +657,11 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     # train.py의 TASKS와 같은 정의. 과제별로 스펙트로그램이 갖춰졌는지 판단하는 데 쓴다.
     TASK_CLASSES = {"정상-자극": ["정상", "자극"]}
 
+    def _hist_score(h):
+        """학습 기록 하나의 비교 점수. 균형 정확도가 있으면 그것, 예전 기록은 정확도."""
+        b = h.get("balanced_accuracy")
+        return b if b is not None else h.get("accuracy", 0)
+
     def _reload_after_train(run_start):
         """학습 하나가 여러 파일을 만들 수 있어(과제=전체/방식=둘다 등), 방금 이 실행이
         새로 남긴 기록 중 정확도가 가장 높은 모델을 골라 실행 중인 분류기에 반영한다.
@@ -674,7 +679,8 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         if not fresh:
             _job_say("⚠️ 학습 기록을 찾지 못해 모델을 갈아끼우지 못했습니다")
             return
-        best = max(fresh, key=lambda h: h.get("accuracy", 0))
+        # 정상이 대부분이라 그냥 정확도는 '모두 정상'만으로도 높다 → 균형 정확도로 고른다(0절 ㉗)
+        best = max(fresh, key=_hist_score)
         full = os.path.join(root_dir, models_rel, best["model_file"])
         if not os.path.isfile(full):
             _job_say(f"⚠️ 모델 파일이 없어 적용하지 못했습니다: {best['model_file']}")
@@ -685,7 +691,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
             _job_say(f"⚠️ 새 모델 적용 실패: {e}")
             return
         _job_say(f"↻ 새 모델 적용: {info['name']} ({best['task']}/{best['mode']}, "
-                f"Accuracy={best['accuracy']:.4f}) / 클래스 {info['classes']}")
+                f"균형 정확도={_hist_score(best):.4f}) / 클래스 {info['classes']}")
         print(f"[web] 모델 교체 -> {info['name']} {info['classes']} ({full})")
 
     @app.route("/api/job")
@@ -763,7 +769,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         except Exception:
             return None
         hist = [h for h in hist if h.get("accuracy") is not None]
-        return max(hist, key=lambda h: h["accuracy"]) if hist else None
+        return max(hist, key=_hist_score) if hist else None
 
     @app.route("/api/datasets")
     def api_datasets():
