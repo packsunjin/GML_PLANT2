@@ -11,8 +11,7 @@
 
   var STATE = {
     "정상":     { alert: null },
-    "수분부족": { alert: { icon: "💧", text: "수분부족 신호가 이어지고 있어요. 겉흙이 말랐다면 물을 주세요." } },
-    "자극":     { alert: { icon: "⚡", text: "잎에 닿는 자극이 감지됐어요. 순간적인 반응이라 곧 회복됩니다." } }
+    "자극":     { alert: { icon: "⚡", text: "최근 30초 창이 자극으로 판정됐어요. 손대지 않아도 생기는 느린 흔들림도 자극으로 나올 수 있어요(보고서 7절)." } }
   };
 
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -262,14 +261,14 @@
 
   // ── 데모 (백엔드 없이 파일만 열었을 때) ──────────────────────────
   var demo = false, demoStart = Date.now();
-  var DEMO = ["정상", "수분부족", "자극"];
+  var DEMO = ["정상", "자극"];
 
   function demoPayload() {
     var t = (Date.now() - demoStart) / 1000;
     var state = DEMO[Math.floor(t / 10) % DEMO.length];
     var top = 0.68 + Math.sin(t / 3) * 0.12;
     var probs = {};
-    DEMO.forEach(function (s) { probs[s] = (1 - top) / 3; });
+    DEMO.forEach(function (s) { probs[s] = (1 - top) / (DEMO.length - 1); });
     probs[state] = top;
 
     var signal = [], v = 0;
