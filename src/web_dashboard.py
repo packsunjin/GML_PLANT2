@@ -148,7 +148,8 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
                 # stopped: 마지막 작업이 '중지'로 끝났는지. 화면이 완료와 구분해 표시한다.
                 _job.update({"running": False, "ok": ok, "finished": time.time(),
                              "step": None, "stopping": False, "stopped": stopped})
-            _job_say(("⏹ 중지됨 (모은 데이터는 저장됨)" if stopped else "✅ 완료") if ok else "중단됨")
+            stop_msg = "⏹ 중지됨 (모은 데이터는 저장됨)" if kind == "collect" else "⏹ 중지됨"
+            _job_say((stop_msg if stopped else "✅ 완료") if ok else "중단됨")
 
     threading.Thread(target=work, daemon=True).start()
     return True
