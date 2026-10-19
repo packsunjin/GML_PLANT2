@@ -214,17 +214,35 @@ def session_filename(state, session=None):
     return f"{base}.csv" if not session or int(session) <= 1 else f"{base}_{int(session)}.csv"
 
 
+def _session_numbers(out_dir, state):
+    """폴더에 있는 그 상태의 회차 번호들. 정상.csv = 1, 정상_5.csv = 5."""
+    nums = []
+    try:
+        names = os.listdir(out_dir)
+    except OSError:
+        return nums
+    base = KOR_FILENAMES[state][:-4]
+    for f in names:
+        if f == base + ".csv":
+            nums.append(1)
+        elif f.startswith(base + "_") and f.endswith(".csv"):
+            mid = f[len(base) + 1:-4]
+            if mid.isdigit():
+                nums.append(int(mid))
+    return nums
+
+
 def next_session(out_dir, state):
-    """그 상태의 다음 회차 번호. 이미 있는 파일을 세어 결정한다."""
-    n = 1
-    while os.path.isfile(os.path.join(out_dir, session_filename(state, n))):
-        n += 1
-    return n
+    """그 상태의 다음 회차 번호 = 있는 회차 중 가장 큰 번호 + 1.
+    1번부터 차례로 세면 앞 회차 하나를 빼냈을 때(시험 파일 정리 등) 뒤 회차가 있는데도
+    0회로 세고 빈 번호에 새 기록을 끼워 넣는다(2026-10-19, 0절 ㉕)."""
+    nums = _session_numbers(out_dir, state)
+    return max(nums) + 1 if nums else 1
 
 
 def count_sessions(out_dir, state):
-    """이미 수집된 회차 수."""
-    return next_session(out_dir, state) - 1
+    """이미 수집된 회차 수(번호가 비어 있어도 실제 있는 파일 수)."""
+    return len(_session_numbers(out_dir, state))
 
 
 # 전극 표류의 세기. 30분(1800초)에 표준편차 약 1mV 가 되도록 잡았다.
