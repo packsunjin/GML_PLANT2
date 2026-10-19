@@ -109,9 +109,12 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
                 # 자식 프로세스가 한글을 그대로 뱉도록 UTF-8을 강제한다(파이 기본 로캘이
                 # C인 경우 UnicodeEncodeError로 죽는 것을 막는다).
                 env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+                # 자기만의 프로세스 그룹으로 띄운다. 학습(GridSearchCV n_jobs=-1)은 일꾼 프로세스를
+                # 여럿 만드는데, 중지할 때 그룹째 멈춰야 일꾼까지 끝난다(0절 ㉚).
                 proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True,
-                                        encoding="utf-8", errors="replace", bufsize=1)
+                                        encoding="utf-8", errors="replace", bufsize=1,
+                                        start_new_session=True)
                 _job_proc["proc"] = proc
                 for line in proc.stdout:
                     _job_say(line)
@@ -120,7 +123,7 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
                 # 중지 요청으로 끝났으면 실패가 아니다. sensor_control은 SIGINT를 받아도
                 # 지금까지 모은 데이터를 저장하고 0으로 끝나지만, 단계에 따라 130/-2가
                 # 될 수 있어 함께 성공으로 본다.
-                if _job.get("stopping") and rc in (0, 130, -2, -15):
+                if _job.get("stopping") and rc in (0, 130, -2, -15, -9):
                     _job_say(f"⏹ '{name}' 중지됨")
                     break
                 if rc != 0:
@@ -718,18 +721,33 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
             return jsonify({"ok": True, "note": "이미 끝나가는 중입니다", **_job_snapshot()})
         _job_say("⏹ 중지 요청을 보냈습니다…")
 
+        kind = _job.get("kind")
+
+        def _group(sig):
+            """그 작업의 프로세스 그룹 전체(학습 일꾼 포함)에 신호를 보낸다."""
+            try:
+                os.killpg(os.getpgid(proc.pid), sig)
+            except (ProcessLookupError, PermissionError):
+                pass
+
         def finisher():
             try:
-                proc.send_signal(signal.SIGINT)   # 정상 종료 경로 -> 모은 데이터 저장
-                # 수집기는 기록을 이미 파일에 써 두고 있어서 남은 일은 마지막 flush·메타·점검뿐이지만,
-                # 밤새 모은 1천만 줄을 점검하는 데는 수십 초가 걸릴 수 있다. 10초로 두었다가
-                # 강제 종료로 메타 파일이 안 남은 적이 있어 넉넉히 기다린다(2026-10-15).
-                proc.wait(timeout=300)
+                if kind == "collect":
+                    proc.send_signal(signal.SIGINT)   # 정상 종료 경로 -> 모은 데이터 저장
+                    # 수집기는 기록을 이미 파일에 써 두고 있어서 남은 일은 마지막 flush·메타·점검뿐이지만,
+                    # 밤새 모은 1천만 줄을 점검하는 데는 수십 초가 걸릴 수 있다. 10초로 두었다가
+                    # 강제 종료로 메타 파일이 안 남은 적이 있어 넉넉히 기다린다(2026-10-15).
+                    proc.wait(timeout=300)
+                else:
+                    # 변환·학습은 저장할 것이 없다. 그룹째 끝내고 10초 안에 안 끝나면 강제 종료.
+                    _group(signal.SIGTERM)
+                    proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 _job_say("⚠️ 응답이 없어 강제 종료합니다")
-                proc.kill()
             except Exception as e:
                 _job_say(f"⚠️ 중지 실패: {e}")
+            # 남은 일꾼 프로세스가 출력 통로를 붙잡고 있으면 작업이 영영 안 끝난다 → 그룹째 정리.
+            _group(signal.SIGKILL)
 
         threading.Thread(target=finisher, daemon=True).start()
         return jsonify({"ok": True, "label": label})
