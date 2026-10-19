@@ -55,8 +55,9 @@ STATE_SUFFIX_SEP = "_"
 
 def state_of(fname):
     """파일명에서 상태를 알아낸다. 모르는 파일이면 None.
-    '정상.csv' 도 '정상_3.csv' 도 '정상' 이다."""
-    if not fname.lower().endswith(".csv"):
+    '정상.csv' 도 '정상_3.csv' 도 '정상' 이다.
+    누른 시각 기록('자극_2.presses.csv')은 상태 파일이 아니다 — '_' 로 자르면 '자극'이 되므로 먼저 뺀다."""
+    if not fname.lower().endswith(".csv") or fname.endswith(".presses.csv"):
         return None
     stem = fname[:-4]
     if stem + ".csv" in FILE_TO_STATE:
@@ -110,6 +111,33 @@ DROPOUT_MAX = 0.15   # 전체의 이 비율을 넘게 걸리면 신호 자체가
 EVENT_ONLY_STATE = "자극"
 EVENT_P2P_MULT = 2.0
 EVENT_MIN_WINDOWS = 10  # 이 미만이면 파일 내 편차가 별로 없다는 뜻이라 거르지 않는다
+
+# 위의 '튀는 창만 남기기'는 정상 밤샘 기록에도 같은 크기의 자연 출렁임이 있어 맞지 않았다(0절 ㉓·㉗).
+# 그래서 자극 회차 CSV 옆에 누른 시각 기록(<이름>.presses.csv)이 있으면 그것으로 라벨을 붙인다.
+# 누른 시각이 든 창 = 자극, 나머지 = 정상. 이 경우 이벤트 선별은 하지 않는다.
+NORMAL_STATE = "정상"
+PRESS_SUFFIX = ".presses.csv"
+
+
+def press_times(csv_path):
+    """자극 회차의 누른(댄) 시각(파일 기준 초). 기록 파일이 없거나 열을 모르면 None.
+
+    report/stim/ml_touch.py 의 touch_times() 와 같은 규칙이다.
+      · file_sec 열이 있으면(1회차): 누르고 바로 기록(최대 10초 늦음) → file_sec − 5
+      · 없고 lap_sec 만 있으면(2회차): 대고 약 5초 뒤 기록, 스톱워치 0~5초 늦게 켬 → lap_sec − 2.5
+    """
+    p = os.path.splitext(csv_path)[0] + PRESS_SUFFIX
+    if not os.path.isfile(p):
+        return None
+    d = pd.read_csv(p, comment="#")
+    if "file_sec" in d.columns:
+        t = d["file_sec"] - 5.0
+    elif "lap_sec" in d.columns:
+        t = d["lap_sec"] - 2.5
+    else:
+        print(f"    ⚠️  {os.path.basename(p)} 에 file_sec·lap_sec 열이 없어 누른 시각을 못 읽습니다")
+        return None
+    return pd.to_numeric(t, errors="coerce").dropna().to_numpy(dtype=float)
 
 
 RAIL_BAND_V = 0.03       # 극값에서 이 안이면 '레일에 붙었다'로 본다
@@ -216,17 +244,26 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     out_dir = os.path.join(out_root, cls)
     os.makedirs(out_dir, exist_ok=True)
 
+    # 자극 회차에 누른 시각 기록이 있으면 창마다 라벨을 붙인다(위 PRESS_SUFFIX 설명).
+    presses = press_times(csv_path) if cls == EVENT_ONLY_STATE else None
+
     # 이전에 만든 이미지를 먼저 지운다. 새로 수집한 CSV가 더 짧으면 예전 이미지가
     # 남아 학습 데이터에 섞이기 때문이다(파일명이 시작 인덱스라 덮어쓰기가 안 됨).
     # 이 CSV 의 이미지만 지운다. 폴더 전체를 지우면 같은 상태의 다른 세션 파일이
     # 만든 이미지까지 사라져 마지막 파일 것만 남는다(0절 ⑲).
+    # 누른 시각 라벨을 쓰면 한 회차의 이미지가 정상·자극 두 폴더에 나뉘므로 모든 상태 폴더를 본다.
     base_name = os.path.splitext(fname)[0]
-    stale = [n for n in os.listdir(out_dir)
-             if n.lower().endswith(".png") and n.startswith(base_name + "_")]
-    for n in stale:
-        os.remove(os.path.join(out_dir, n))
+    stale = 0
+    for st in sorted(set(FILE_TO_STATE.values())):
+        d = os.path.join(out_root, st)
+        if not os.path.isdir(d):
+            continue
+        for n in os.listdir(d):
+            if n.lower().endswith(".png") and n.startswith(base_name + "_"):
+                os.remove(os.path.join(d, n))
+                stale += 1
     if stale:
-        print(f"  이전 이미지 {len(stale)}장 정리")
+        print(f"  이전 이미지 {stale}장 정리")
 
     df = pd.read_csv(csv_path)
     raw_signal = df["voltage"].to_numpy(dtype=float)
@@ -359,7 +396,7 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
 
     # 2차 패스: '자극' 파일은 이 파일 안에서 상대적으로 튀는 창만 남긴다(위 EVENT_ONLY_STATE 설명).
     event_thresh = None
-    if quality and cls == EVENT_ONLY_STATE and len(prepared) >= EVENT_MIN_WINDOWS:
+    if presses is None and quality and cls == EVENT_ONLY_STATE and len(prepared) >= EVENT_MIN_WINDOWS:
         p2ps = np.array([p[2] for p in prepared])
         baseline = float(np.median(p2ps))
         thresh = baseline * EVENT_P2P_MULT
@@ -370,24 +407,37 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     # 의미가 있어서, 파일 앞부분 평균을 기준선으로 삼는다.
     dc_baseline = float(np.mean(prepared[0][3])) if prepared else 0.0
 
+    by_label = {}
     for start, segment, p2p, raw_seg in prepared:
         if event_thresh is not None and p2p <= event_thresh:
             skipped_quiet += 1
             continue
 
+        win_cls = cls
+        if presses is not None:
+            a = start / fs
+            win_cls = EVENT_ONLY_STATE if np.any((presses >= a) & (presses <= a + window_sec)) \
+                else NORMAL_STATE
+        win_dir = os.path.join(out_root, win_cls)
+        os.makedirs(win_dir, exist_ok=True)
+
         # inference.py와 같은 함수(spectro_render.compute_spectrogram)를 쓴다.
         Sxx_db, f, t = compute_spectrogram(segment, fs_a, high=high)
 
         img_name = f"{base_name}_{start:06d}.png"
-        img_path = os.path.join(out_dir, img_name)
+        img_path = os.path.join(win_dir, img_name)
         make_spectrogram_image(Sxx_db, img_path)
 
         feats = extract_features(segment, Sxx_db, f, t, fs=fs_a,
                                  raw_window=raw_seg, baseline=dc_baseline, raw_fs=fs)
-        feature_rows.append([img_name, fname, cls] + feats.tolist())
+        feature_rows.append([img_name, fname, win_cls] + feats.tolist())
 
+        by_label[win_cls] = by_label.get(win_cls, 0) + 1
         count += 1
 
+    if presses is not None:
+        print(f"    [누른 시각 라벨] 누른 시각 {len(presses)}번 → 그 시각이 든 {window_sec:g}초 창 = 자극 "
+              f"{by_label.get(EVENT_ONLY_STATE, 0)}창, 나머지 = 정상 {by_label.get(NORMAL_STATE, 0)}창")
     if event_thresh is not None:
         print(f"    [이벤트 선별] '{cls}'는 순간 이벤트라 조용한 창은 뺌 — "
               f"{skipped_quiet}창 제외, {count}창만 사용 (문턱값 p2p>{event_thresh:.4f}V)")
@@ -512,9 +562,10 @@ def main():
     used_notches = []
     # 시뮬레이터 출력이 실측으로 오해된 채 학습·보고서까지 올라간 적이 있다.
     # 수집기가 CSV 옆에 남긴 출처 파일을 여기서 읽어, 가짜가 섞이면 크게 알린다.
-    simulated = [f for f in sorted(targets) if f.endswith(".csv")
+    # 상태 파일만 본다(자극.presses.csv 같은 누른 시각 기록은 수집기 출력이 아니다).
+    simulated = [f for f in sorted(targets) if state_of(f)
                  and sensor_control.is_simulated(os.path.join(args.raw_dir, f)) is True]
-    unknown = [f for f in sorted(targets) if f.endswith(".csv")
+    unknown = [f for f in sorted(targets) if state_of(f)
                and sensor_control.is_simulated(os.path.join(args.raw_dir, f)) is None]
     if simulated:
         print(f"[preprocess] ⛔ 시뮬레이터 출력이 섞여 있습니다: {', '.join(simulated)}")
@@ -524,7 +575,7 @@ def main():
         print("    .meta.json 이 없습니다. 수집기를 거치지 않았거나 옛 코드로 모은 파일입니다.")
 
     for fname in sorted(targets):
-        if fname.endswith(".csv"):
+        if fname.endswith(".csv") and state_of(fname):
             csv_path = os.path.join(args.raw_dir, fname)
             count, feature_rows, used_notch = process_file(csv_path, args.out_dir,
                                                window_sec=args.window_sec, step_sec=args.step_sec,
@@ -600,11 +651,12 @@ def main():
         feat_df = pd.DataFrame(all_feature_rows, columns=columns)
 
         # --only 로 한 상태만 돌렸으면 features.csv를 통째로 덮어쓰면 안 된다.
-        # 그 상태의 예전 행만 걷어내고 나머지는 그대로 둔 채 합친다.
+        # 이번에 다시 변환한 파일의 예전 행만 걷어내고 나머지는 그대로 둔 채 합친다.
+        # (라벨로 거르면 안 된다 — 누른 시각 라벨을 쓴 자극 회차는 '정상' 행도 만든다.)
         if args.only and os.path.isfile(args.features_csv):
             try:
                 old = pd.read_csv(args.features_csv)
-                kept = old[old["label"] != args.only]
+                kept = old[~old["source_file"].isin(set(targets))]
                 feat_df = pd.concat([kept, feat_df], ignore_index=True)
                 print(f"[preprocess] 기존 특징 {len(kept)}행 유지 + '{args.only}' 새로 {len(all_feature_rows)}행")
             except Exception as e:

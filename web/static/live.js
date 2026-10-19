@@ -628,8 +628,19 @@
         box.innerHTML = "";
         var ul = document.createElement("ul");
         hist.forEach(function (h) {
-          var acc = h.accuracy != null ? Math.round(h.accuracy * 1000) / 10 + "%" : "—";
+          var pct = function (v) { return Math.round(v * 1000) / 10 + "%"; };
+          var acc = h.accuracy != null ? pct(h.accuracy) : "—";
           var ok = h.accuracy != null && h.accuracy >= 0.7;
+          // 정상이 대부분이면 정확도는 '모두 정상'만으로도 높다 → 균형 정확도·자극 찾은 수·오경보율로 본다
+          var detail = "";
+          if (h.balanced_accuracy != null) {
+            ok = h.balanced_accuracy >= 0.7;
+            acc = pct(h.balanced_accuracy) + " (균형)";
+            if (h.hits != null) {
+              detail = " · 자극 " + h.hits + "/" + h.positives + " 찾음 · 오경보 " +
+                       pct(h.false_alarm_rate || 0);
+            }
+          }
           var when = h.trained_at ? new Date(h.trained_at * 1000).toLocaleString("ko-KR",
                        { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
           var li = document.createElement("li");
@@ -637,7 +648,7 @@
                             " · train " + (h.train_n != null ? h.train_n : "?") +
                             " test " + (h.test_n != null ? h.test_n : "?") +
                             (h.duration_sec != null ? " · " + Math.round(h.duration_sec) + "초 걸림" : "") +
-                            " · 정확도 " + (ok ? "" : "⚠ ") + acc +
+                            " · 정확도 " + (ok ? "" : "⚠ ") + acc + detail +
                             (when ? " · " + when : "");
           ul.appendChild(li);
         });
