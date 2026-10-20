@@ -14,8 +14,8 @@ models/train_history.json
 # 보고서 빌드 중간 산출물 (tpl.html 에서 매번 생성된다)
 report/blocks.json
 
-# 측정 원본 CSV 는 용량이 커서 git 기록에 넣지 않고 GitHub 릴리스에 올린다(CLAUDE.md 0절 ⑱)
-data/bench/dc_shorted_30min_v2.csv
+# 보고서에 쓴 측정 원본은 2026-10-20 부터 git 본문에 둔다(GML_PLANT2 에는 릴리스가 없다). 보고서에 안 쓴 것만 뺀다
 data/bench/stage2_electrode_2h.csv
-data/plant/*.csv
+data/plant/*_INVALID*.csv
+data/plant/tap_session*.csv
 data/touch/
