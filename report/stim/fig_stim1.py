@@ -18,7 +18,7 @@ ax=fig.add_subplot(gs[1]); ax.plot(np.arange(len(a))/600,a,color="#2b6cb0",lw=0.
 for p in presses: ax.axvline(p/60,color="#c05621" if (p in step_t) else "#a0aec0",lw=0.8,ls="--")
 ax.set_title("(나) 자극 1회차 — 세로 점선: 누른 시각",loc="left",fontsize=10)
 from matplotlib.lines import Line2D
-H=[Line2D([],[],color="#c05621",lw=1.2,ls="--",label="누른 순간 계단이 생김 (4번)"),Line2D([],[],color="#a0aec0",lw=1.2,ls="--",label="누른 순간 변화 없음 (6번)")]
+H=[Line2D([],[],color="#c05621",lw=1.2,ls="--",label="누른 순간 계단이 생김 (4번)"),Line2D([],[],color="#a0aec0",lw=1.2,ls="--",label="누른 순간 계단 없음 (6번)")]
 ax.legend(handles=H,loc="upper left",fontsize=8,frameon=True)
 ax.set_xlim(0,30); ax.set_ylabel("전위 (mV)"); ax.set_xlabel("시간 (분)")
 ax=fig.add_subplot(gs[2]); tt=np.arange(-200,1200)/10
@@ -28,7 +28,7 @@ for p in presses[:9]:
     ax.plot(tt,seg,color="#c05621" if hit else "#a0aec0",lw=0.9 if hit else 0.7,zorder=3 if hit else 2)
 ax.axvline(0,color="k",lw=0.8); ax.axvspan(-10,0,color="#fbd38d",alpha=0.5,lw=0)
 ax.set_title("(다) 스톱워치에 기록한 시각을 0초에 맞춰 9번을 겹쳐 그림 (10번째는 뒤 120초가 기록 밖이라 뺌)",loc="left",fontsize=10)
-H2=[Line2D([],[],color="#c05621",lw=1.2,label="누른 순간 계단이 생김 (4번)"),Line2D([],[],color="#a0aec0",lw=1.2,label="누른 순간 변화 없음 (5번)"),matplotlib.patches.Patch(color="#fbd38d",alpha=0.6,label="실제로 누른 순간이 있는 구간 (기록이 최대 10초 늦음)")]
+H2=[Line2D([],[],color="#c05621",lw=1.2,label="누른 순간 계단이 생김 (4번)"),Line2D([],[],color="#a0aec0",lw=1.2,label="누른 순간 계단 없음 (5번)"),matplotlib.patches.Patch(color="#fbd38d",alpha=0.6,label="실제로 누른 순간이 있는 구간 (기록이 최대 10초 늦음)")]
 ax.set_ylim(-36,30); ax.legend(handles=H2,loc="lower center",ncol=2,fontsize=8,frameon=True)
 ax.set_xlim(-20,120); ax.set_xlabel("스톱워치에 기록한 시각 뒤 시간 (초)"); ax.set_ylabel("변화 (mV)")
 for ax in fig.axes: ax.grid(alpha=0.3,lw=0.5); ax.tick_params(labelsize=8)
