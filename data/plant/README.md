@@ -1,6 +1,6 @@
 # data/plant — 식물 측정 기록
 
-CSV 원본은 용량이 커서 저장소가 아니라 GitHub 릴리스 `data-2026-10` 에 있다. 여기에는 `.meta.json` 과 설명만 둔다.
+보고서에 쓴 3단계 원본 `live_20260915_070020.csv` 는 여기 있다(2026-10-20, GML_PLANT2 에는 릴리스가 없어 git 본문에 넣음). 무효 기록(`*_INVALID*`, `tap_session*`)의 CSV 는 옛 저장소 packsunjin/GML_PLANT 릴리스 `data-2026-10` 에만 있다.
 
 | 파일 | 내용 | 쓸 수 있나 |
 |---|---|---|
