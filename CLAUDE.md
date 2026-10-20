@@ -1009,7 +1009,7 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 문장 수정 `report/stim/review7_fix.json`(요약 "묻힐 것으로 판단", 70 mV 무리 문턱 잘림, 결론 "이 조건에서는 판정할 수 없다") + 한계에 늦은 라벨 재평가 결과(균형 정확도 42~50 %, 자극 창 57·59개 중 0~22개, 오경보 0~51 %, `report/stim/ml_touch_late.json`) — **결론 같음**.
 > 2026-10-20 사용자 지시로 옛 판(`정리본`·`정리본_자극실험초안`·`최종본` .hwpx)을 저장소에서 지웠다. **남은 건 `제출본` 하나.** 옛 판이 필요하면 git 기록에서 꺼낸다(`git show 69627cd:report/<이름>`) — 위 스크립트 중 정리본을 입력으로 받는 것(cover_lineseg 등)도 그렇게 꺼내 쓴다.
 > 2026-10-20 검토: **GML_PLANT2 에는 릴리스가 0개다**(`data-2026-10` 은 옛 저장소 GML_PLANT 에 있었다). 그런데 보고서 Ⅲ-5절이 "1~3단계 원본은 릴리스에"라고 쓴다. 저장소에 없는 것 —
-> `dc_shorted_30min_v2.csv`·`stage2_repeat_1012.csv`·`live_20260915_070020.csv`(메타만 있음), `src/live_spectrogram.py`(git 기록에도 없음), `data/touch/`. 사용자에게 파이에서 받아 git 본문에 넣기로 함(받는 중).
+> `dc_shorted_30min_v2.csv`·`stage2_repeat_1012.csv`·`live_20260915_070020.csv`(메타만 있음), `src/live_spectrogram.py`(git 기록에도 없음 — 사용자 "안 쓴다", 보고서에서 파일 이름을 빼고 "실시간 화면(지금은 /live)"으로 바꿈, `live_note.json` → `live_note2.json`), `data/touch/`(live CSV 에서 다시 만들 수 있다고 씀). CSV 셋은 사용자에게 받아 git 본문에 넣기로 함(받는 중).
 > 7절 기록에 .meta.json 없음 → Ⅲ-5절에 "옮기며 빠졌고 실측임은 측정자 확인" 한 문장(`report/stim/meta_note.json`).
 > **쪽수는 아직 한글에서 확인 안 함**(새 문단 6개·표·그림이 늘어 약 2쪽 이상 늘었다). 넘치면 그림7 가로 40000 을 줄인다.
 >

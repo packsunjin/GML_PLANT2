@@ -1,0 +1,2 @@
+[{"old": "실시간 페이지(live_spectrogram.py)로 진행했다.", "new": "실시간 화면으로 진행했다(지금은 웹 대시보드의 /live 화면이 같은 일을 한다)."},
+ {"old": "3단계 손 접촉 기록은 당시의 실시간 스펙트로그램 페이지(live_spectrogram.py, 지금은 쓰지 않아 저장소에 없음)로 쟀고, 접촉 데이터셋은 그 기록에서 build_touch_dataset.py로 다시 만들 수 있다.", "new": "3단계 손 접촉 기록은 실시간 화면으로 쟀고(지금은 web_dashboard.py의 /live 화면), 접촉 데이터셋은 그 기록에서 build_touch_dataset.py로 만든다."}]
