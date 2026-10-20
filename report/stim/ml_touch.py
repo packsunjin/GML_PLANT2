@@ -62,8 +62,14 @@ def windows(src, tmp_name, work):
     df.to_csv(cache, index=False)
     return df
 
+LATE = os.environ.get("GML_LABEL") == "late"   # 검토 반영(2026-10-20): 늦게 오는 반응용 라벨
+
 def label(df, touches):
     st = df["start_s"].to_numpy()
+    if LATE:
+        # 누른 뒤 20~50초 구간과 15초 이상 겹치는 창 = 자극(누르기 1번당 창 7개)
+        ov = lambda a, t: max(0.0, min(a + WIN, t + 50) - max(a, t + 20))
+        return np.array([any(ov(a, t) >= 15 for t in touches) for a in st]).astype(int)
     return np.array([np.any((touches >= a) & (touches <= a + WIN)) for a in st]).astype(int)
 
 def scores(y, p):
@@ -122,6 +128,12 @@ def main(work):
             Te["y"].to_numpy(), (Te["max_jump_mV"].to_numpy() > th).astype(int))
         r["모두 정상이라고 답함"] = scores(Te["y"].to_numpy(), np.zeros(len(Te), int))
         out["평가 " + name + " (" + "+".join(te) + ")"] = r
+    out["라벨"] = "누른 뒤 20~50초와 15초 이상 겹치는 창" if LATE else "누른 시각이 든 30초 창"
+    if LATE:
+        with open(os.path.join(work, "ml_touch_late.json"), "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=1)
+        print(json.dumps(out, ensure_ascii=False, indent=1))
+        return
     with open(os.path.join(work, "ml_touch.json"), "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
     print(json.dumps(out, ensure_ascii=False, indent=1))
