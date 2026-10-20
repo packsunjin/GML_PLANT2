@@ -1,0 +1,4 @@
+[
+{"old": "분당으로는 0.37 mV(끝점 차이)", "new": "이 마지막 30분의 표류는 분당 0.37 mV(끝점 차이)"},
+{"old": "(지금은 web_dashboard.py의 /live 화면), 접촉 데이터셋은 그 기록에서 build_touch_dataset.py로 만든다.", "new": "(지금은 web_dashboard.py의 /live 화면)."}
+]
