@@ -1,0 +1,1 @@
+[{"old": "3단계 손 접촉 기록은 live_spectrogram.py(실시간 스펙트로그램 페이지)로 쟀고, build_touch_dataset.py로 접촉 데이터셋을 만들었다.", "new": "3단계 손 접촉 기록은 당시의 실시간 스펙트로그램 페이지(live_spectrogram.py, 지금은 쓰지 않아 저장소에 없음)로 쟀고, 접촉 데이터셋은 그 기록에서 build_touch_dataset.py로 다시 만들 수 있다."}]
