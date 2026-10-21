@@ -56,8 +56,9 @@ def load_live(sec=LIVE_SEC):
 
 # ── 그림1: 측정 시스템 ────────────────────────────────
 def fig_sys():
-    fig, ax = plt.subplots(figsize=(7.2, 2.5))
-    ax.set_xlim(-1, 100); ax.set_ylim(0, 34); ax.axis("off")
+    # 2026-10-21: 본 실험(은/염화은 전극 1 cm, 패러데이 상자, DHT11 온습도)을 반영. 예비 실험 전극은 괄호로 남긴다.
+    fig, ax = plt.subplots(figsize=(7.2, 2.75))
+    ax.set_xlim(-1.5, 100); ax.set_ylim(0, 38); ax.axis("off")
 
     def box(x, y, w, h, title, sub="", edge=INK):
         ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.3,rounding_size=0.8",
@@ -70,17 +71,22 @@ def fig_sys():
     def arrow(x0, y0, x1, y1):
         ax.annotate("", (x1, y1), (x0, y0), arrowprops=dict(arrowstyle="-|>", lw=0.8, color=INK))
 
-    box(0, 17, 19, 15, "토마토 줄기", "전극1(위) · 전극2(아래)\n점퍼선 핀, 간격 3 cm\n줄기 관통")
+    # 패러데이 상자: 식물만 안에 들어간다(회로·파이는 밖)
+    ax.add_patch(FancyBboxPatch((-1.2, 15.6), 21.4, 18.6, boxstyle="round,pad=0.2,rounding_size=0.8",
+                                fc="none", ec=GREEN, lw=1.0, ls=(0, (4, 2))))
+    ax.text(9.5, 35.6, "패러데이 상자 (방충망, GND 연결)", ha="center", fontsize=6.6, color=GREEN)
+    box(0, 17, 19, 15, "식물 줄기", "전극1(위) · 전극2(아래)\n본 실험: 은/염화은, 1 cm\n(예비: 점퍼선 핀, 3 cm)")
     box(25, 17, 18, 15, "MCP6002 (1개)", "증폭기 2개 내장\n각각 전압 폴로어(이득 1배)\n고역통과 필터 없음")
     box(49, 17, 21, 15, "ADS1115", "16비트, A0 − A1 차동\n회로 점검: ±0.256 V\n전극 측정: ±2.048 V")
-    box(76, 17, 23, 15, "라즈베리파이 5", "초당 250회 기록\n실시간 스펙트로그램\nSVM · 랜덤포레스트", edge=BLUE)
-    arrow(19.6, 24.5, 24.4, 24.5); arrow(43.6, 24.5, 48.4, 24.5); arrow(70.6, 24.5, 75.4, 24.5)
+    box(76, 17, 23, 15, "라즈베리파이 5", "초당 250회 기록\n상자 안 온습도 (DHT11, 60초마다)\nSVM · 랜덤 포레스트", edge=BLUE)
+    arrow(20.6, 24.5, 24.4, 24.5); arrow(43.6, 24.5, 48.4, 24.5); arrow(70.6, 24.5, 75.4, 24.5)
     ax.text(72.5, 25.5, "I2C", ha="center", fontsize=6.5, color=GRAY)
 
     box(1, 1, 30, 12, "기준 전압 분압", "3.3 V – 10 kΩ – 10 kΩ – 접지\n중점 1.65 V → 흙 기준 전극")
-    arrow(16, 13.3, 9.5, 16.4)
+    arrow(16, 13.3, 9.5, 15.2)
     ax.text(33, 7, "0–3.3 V 단전원 회로에서 식물 전위가 1.65 V를\n"
-                   "중심으로 위아래로 움직일 수 있게 한다.", fontsize=6.6, color=GRAY, va="center")
+                   "중심으로 위아래로 움직일 수 있게 한다.\n"
+                   "회로와 라즈베리파이는 상자 밖에 둔다.", fontsize=6.6, color=GRAY, va="center")
     save(fig, "FIG_SYS.png")
 
 
