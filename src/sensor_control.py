@@ -496,7 +496,7 @@ def _report_drift(t, v, fs):
     slope = float(np.polyfit(t, v, 1)[0]) * 60.0 * 1000.0   # mV/분
     total = slope * span_min                                 # 이번 수집 동안의 총 표류
     print(f"[sensor_control] 기준점 표류: 출력 {slope:+.1f} mV/분 "
-          f"(전극 입력 환산 {to_input_mv(slope/1000.0)*1000:+.4f} mV/분, "
+          f"(전극 입력 환산 {to_input_mv(slope/1000.0):+.4f} mV/분, "
           f"이번 {span_min*60:.0f}초 동안 출력 {total:+.1f} mV)")
     if abs(slope) < DRIFT_WARN_MV_PER_MIN:
         return
