@@ -151,7 +151,15 @@
   }
 
   // ── 적용 ─────────────────────────────────────────────────────────
+  // 상자 안 온습도(DHT11). 측정이 멈춰 있어도 따로 읽히므로 맨 먼저 갱신한다.
+  function envText(e) {
+    if (!e) return "온습도 센서 없음";
+    var old = e.age_sec > 120 ? " (" + Math.round(e.age_sec / 60) + "분 전)" : "";
+    return "🌡 " + e.temp_c.toFixed(0) + " °C · 💧 " + e.humidity_pct.toFixed(0) + " %" + old;
+  }
+
   function apply(d) {
+    if (d && !demo && "env" in d) setText("env", envText(d.env));
     // 수집 중에는 실시간 루프가 센서를 양보하고 쉰다. 화면이 멈춘 게 고장이 아니라는
     // 것을 알려주고, '신호 끊김' 경고도 이 동안에는 띄우지 않는다.
     paused = !!(d && d.paused);
