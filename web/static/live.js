@@ -731,16 +731,26 @@
         L.push("기준점          : " + (s.baseline == null ? "—" : s.baseline + " V"));
         if (s.baseline_verdict) L.push("판정            : " + s.baseline_verdict);
         if (s.baseline != null && s.baseline_verdict !== "정상 범위") {
+          // 판정이 '레일 포화'인지 '움직이지 않지만 중앙'인지에 따라 안내가 다르다.
+          // 예전에는 둘 다 AD8232 용 '레일에 붙음' 안내를 띄워 판정과 말이 어긋났다.
+          var rail = /레일 포화(로| —)/.test(s.baseline_verdict || "");
           L.push("");
-          L.push("※ 증폭기 출력이 전원 레일에 붙어 있습니다.");
-          L.push("   이 상태에서는 입력이 변해도 출력이 움직이지 않아,");
-          L.push("   수집해도 쓸 수 없는 데이터가 됩니다.");
-          L.push("");
-          L.push("   1) RA·LA·RL 세 전극이 모두 닿아 있는지 확인하세요.");
-          L.push("   2) RL(기준) 전극의 접촉을 먼저 의심하세요 — 기준 전위를");
-          L.push("      못 잡으면 출력이 레일로 밀립니다.");
-          L.push("   3) AD8232 와 ADS1115 의 GND 가 공통인지 확인하세요.");
-          L.push("   4) 자세한 진단:  cd ~/project/src && python3 check_sensors.py");
+          if (rail) {
+            L.push("※ 출력이 측정 범위 끝(전원 레일)에 붙어 있습니다.");
+            L.push("   이 상태로 모으면 입력이 변해도 값이 움직이지 않습니다.");
+            L.push("");
+            L.push("   1) 위·아래 측정 핀과 흙 기준 핀이 모두 꽂혀 있는지");
+            L.push("   2) 10kΩ 두 개 가운데(기준 전압)가 약 1.65 V 인지");
+            L.push("   3) MCP6002·ADS1115·파이의 GND 가 같은 레일에 있는지");
+          } else {
+            L.push("※ 값이 범위 가운데에 있지만 거의 움직이지 않습니다.");
+            L.push("   전극을 식물에 꽂기 전이라면 정상일 수 있습니다");
+            L.push("   (두 입력이 같은 점에 묶여 있으면 이렇게 조용합니다).");
+            L.push("");
+            L.push("   식물에 꽂은 뒤에도 이렇다면:");
+            L.push("   1) 측정 핀 두 개가 줄기 안에 제대로 꽂혀 있는지");
+            L.push("   2) 위·아래 측정 핀 선이 서로 닿아 있지 않은지");
+          }
         }
         box.style.display = "block";
         box.textContent = L.join("\n");
@@ -899,9 +909,9 @@
             log.style.display = "block";
             log.textContent = res.j.error + "\n\n" + (res.j.detail || "")
               + "\n\n확인할 것\n"
-              + "  1) RA·LA·RL 세 전극이 모두 닿아 있는가\n"
-              + "  2) RL(기준) 전극 — 기준 전위를 못 잡으면 출력이 레일로 밀립니다\n"
-              + "  3) AD8232 와 ADS1115 의 GND 가 공통인가\n"
+              + "  1) 위·아래 측정 핀과 흙 기준 핀이 모두 꽂혀 있는가\n"
+              + "  2) 10kΩ 두 개 가운데(기준 전압)가 약 1.65 V 인가\n"
+              + "  3) MCP6002·ADS1115·파이의 GND 가 같은 레일인가\n"
               + "\n'센서' 탭에서 자세히 볼 수 있습니다.";
           }
           precheckPending = { url: url, body: body, startedText: startedText };
