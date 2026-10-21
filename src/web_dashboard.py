@@ -32,11 +32,40 @@ import venv_boot; venv_boot.ensure()   # 직접 실행해도 venv 로 갈아탄�
 import numpy as np
 
 import sensor_control
+import env_sensor
 from inference import RealtimeClassifier, SAMPLE_RATE_HZ
 
 # 최신 결과를 담는 공유 상태 (백그라운드 스레드가 갱신, 웹 요청이 읽음)
 _latest = {"ready": False}
 _lock = threading.Lock()
+
+# ---- 상자 안 온습도(DHT11, ㉞) — 화면 표시용. 기록은 수집기(sensor_control)가 따로 한다 ----
+ENV_PERIOD_SEC = 30.0
+_env = {"temp_c": None, "humidity_pct": None, "at": None}
+
+
+def _env_worker():
+    """30초마다 온습도를 읽어 둔다. 센서가 없으면 1분마다 다시 찾는다.
+    수집기도 같은 센서를 읽지만 커널 드라이버가 2초 안의 재요청은 직전 값을 돌려주므로 부딪히지 않는다."""
+    dev = None
+    while True:
+        if dev is None:
+            dev = env_sensor.find_device()
+        if dev is not None:
+            v = env_sensor.read(dev)
+            if v is not None:
+                with _lock:
+                    _env.update(temp_c=v[0], humidity_pct=v[1], at=time.time())
+        time.sleep(ENV_PERIOD_SEC if dev is not None else 60.0)
+
+
+def env_status():
+    """/data 에 넣을 온습도. 한 번도 못 읽었으면 None."""
+    with _lock:
+        if _env["at"] is None:
+            return None
+        return {"temp_c": _env["temp_c"], "humidity_pct": _env["humidity_pct"],
+                "age_sec": round(time.time() - _env["at"])}
 
 # ---- 수집/학습 작업 (SSH 없이 브라우저에서 실행) -------------------------
 # 한 번에 하나만 돌린다. 실시간 루프와 같은 프로세스에서 무거운 학습을 돌리면 GIL 때문에
@@ -483,6 +512,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     print(f"[web] 입력 소스: {source[1]}")
 
     threading.Thread(target=_worker, args=(clf, source), daemon=True).start()
+    threading.Thread(target=_env_worker, daemon=True).start()
 
     web_dir = _web_dir() if ui == "초록말" else None
     if ui == "초록말" and web_dir is None:
@@ -620,6 +650,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         # 수집 중에는 실시간 루프가 센서를 양보하고 쉰다(같은 ADS1115를 두 프로세스가
         # 번갈아 읽으면 수집 쪽 샘플레이트가 떨어지기 때문). 그 사이 화면은 마지막 값에
         # 멈춰 있는데, 안내가 없으면 고장난 것으로 보인다. 그래서 왜 멈췄는지 같이 보낸다.
+        d["env"] = env_status()          # 상자 안 온습도(DHT11), 센서 없으면 None
         d["paused"] = _pause.is_set()
         if d["paused"]:
             with _job_lock:

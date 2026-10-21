@@ -56,8 +56,9 @@ STATE_SUFFIX_SEP = "_"
 def state_of(fname):
     """파일명에서 상태를 알아낸다. 모르는 파일이면 None.
     '정상.csv' 도 '정상_3.csv' 도 '정상' 이다.
-    누른 시각 기록('자극_2.presses.csv')은 상태 파일이 아니다 — '_' 로 자르면 '자극'이 되므로 먼저 뺀다."""
-    if not fname.lower().endswith(".csv") or fname.endswith(".presses.csv"):
+    누른 시각 기록('자극_2.presses.csv')과 온습도 기록('정상_3.env.csv')은 상태 파일이 아니다
+    — '_' 로 자르면 상태 이름이 되므로 먼저 뺀다."""
+    if not fname.lower().endswith(".csv") or fname.endswith((".presses.csv", ".env.csv")):
         return None
     stem = fname[:-4]
     if stem + ".csv" in FILE_TO_STATE:

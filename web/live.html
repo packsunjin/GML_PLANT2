@@ -192,6 +192,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
     <span class="meta" id="metaRate">— S/s</span>
     <span class="meta" id="metaBand">대역 —</span>
     <span class="meta" id="metaWin">창 —</span>
+    <span class="meta" id="metaEnv" title="상자 안 온도·습도(DHT11, 30초마다)">온습도 —</span>
     <span class="spacer"></span>
     <button id="shapeCi" aria-pressed="true">원</button>
     <button id="shapeSq" aria-pressed="false">네모</button>
@@ -613,6 +614,9 @@ function ingest(d) {
   $("metaRate").textContent = d.actual_rate ? `${(+d.actual_rate).toFixed(1)} S/s` : (d.sample_rate ? `${d.sample_rate} S/s` : "— S/s");
   $("metaBand").textContent = d.band ? `대역 ${d.band[0]}–${d.band[1]} Hz` : "대역 —";
   $("metaWin").textContent = d.window_sec ? `창 ${d.window_sec}초` : "창 —";
+  if ("env" in d) $("metaEnv").textContent = d.env
+    ? `${(+d.env.temp_c).toFixed(0)} °C · ${(+d.env.humidity_pct).toFixed(0)} %` + (d.env.age_sec > 120 ? ` (${Math.round(d.env.age_sec / 60)}분 전)` : "")
+    : "온습도 센서 없음";
   if (mode === "live") setConn(d.paused ? "paused" : "live", d.paused ? `일시정지${d.paused_by ? " · " + d.paused_by : ""}` : "실측 연결");
   render();
 }

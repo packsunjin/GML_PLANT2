@@ -61,6 +61,7 @@ def stuck_threshold_v():
 # 그 값들은 frontend.py 가 들고 있고, 여기서는 물어보기만 한다.
 # 고르는 법:  GML_FRONTEND=dc  또는  --frontend dc
 import frontend
+import env_sensor
 
 FRONTEND = frontend.choose()
 
@@ -657,7 +658,7 @@ def is_simulated(csv_path):
     return None if m is None else (m.get("mode") != "hardware")
 
 
-def _write_meta(out_path, state, session, sample_rate_hz, n_rows, span):
+def _write_meta(out_path, state, session, sample_rate_hz, n_rows, span, extra=None):
     meta = {
         "mode": "hardware" if HARDWARE_AVAILABLE else "simulation",
         "hardware_error": None if HARDWARE_AVAILABLE else _HW_ERR,
@@ -672,6 +673,8 @@ def _write_meta(out_path, state, session, sample_rate_hz, n_rows, span):
         "recorded_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "git_rev": _git_rev(),
     }
+    if extra:
+        meta.update(extra)   # 온습도 파일(env_file·env_rows) 등
     with open(meta_path(out_path), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     if not HARDWARE_AVAILABLE:
@@ -740,6 +743,10 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
     stopped = False
     start = time.time()
     next_report = progress_sec
+    # 상자 안 온습도(DHT11)를 같은 시각축으로 옆 파일(<이름>.env.csv)에 적는다(㉞). 센서가 없으면 건너뜀.
+    env = env_sensor.EnvLogger(out_path, start) if HARDWARE_AVAILABLE else None
+    if env is not None:
+        env.begin()
 
     def report(i, elapsed=None):
         # 경과 시간은 실제 시계 기준으로 보여준다. 하드웨어가 느리면 '샘플 수'와
@@ -815,6 +822,7 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
             pass
     flush()
     f.close()
+    env_info = env.end() if env is not None else None
 
     if not len(ts):
         print("[sensor_control] 모은 데이터가 없어 저장하지 않습니다.")
@@ -830,7 +838,8 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
     # 방법이 아예 없었고, 실제로 시뮬레이터 출력이 실측 데이터로 오해된 채
     # 보고서까지 올라갔다. 신호 처리로 사후에 알아내려 하지 말고 수집할 때 적는다.
     t_np = np.frombuffer(ts, dtype=float); v_np = np.frombuffer(vs, dtype=float)
-    _write_meta(out_path, state, session, sample_rate_hz, n_rows=len(ts), span=float(t_np[-1]))
+    _write_meta(out_path, state, session, sample_rate_hz, n_rows=len(ts), span=float(t_np[-1]),
+                extra=env_info)
 
     _report_artifacts(v_np, sample_rate_hz)
     _report_motion_artifacts(v_np, sample_rate_hz)
