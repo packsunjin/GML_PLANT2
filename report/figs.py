@@ -56,37 +56,68 @@ def load_live(sec=LIVE_SEC):
 
 # ── 그림1: 측정 시스템 ────────────────────────────────
 def fig_sys():
-    # 2026-10-21: 본 실험(은/염화은 전극 1 cm, 패러데이 상자, DHT11 온습도)을 반영. 예비 실험 전극은 괄호로 남긴다.
-    fig, ax = plt.subplots(figsize=(7.2, 2.75))
-    ax.set_xlim(-1.5, 100); ax.set_ylim(0, 38); ax.axis("off")
+    # 2026-10-21: 본 실험 배선(부록 표7)에 맞춤 — DHT11 은 상자 안에서 파이 17·7·9번 핀으로, 상자 망은 GND,
+    # 분압 중점은 흙 기준 전극(상자 안)과 ADS1115 A2(점검), 위·아래 전극은 MCP6002 3·5번.
+    fig, ax = plt.subplots(figsize=(7.2, 3.3))
+    ax.set_xlim(-4, 100); ax.set_ylim(0, 46); ax.axis("off")
 
-    def box(x, y, w, h, title, sub="", edge=INK):
+    def box(x, y, w, h, title, sub="", edge=INK, ts=8.2, ss=5.9):
         ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.3,rounding_size=0.8",
                                     fc="white", ec=edge, lw=0.9))
-        ax.text(x + w / 2, y + h - 2.6, title, ha="center", va="top", fontsize=8.2, weight="bold")
+        ax.text(x + w / 2, y + h - 2.2, title, ha="center", va="top", fontsize=ts, weight="bold")
         if sub:
-            ax.text(x + w / 2, y + h - 6.4, sub, ha="center", va="top", fontsize=5.9, color=GRAY,
+            ax.text(x + w / 2, y + h - 5.8, sub, ha="center", va="top", fontsize=ss, color=GRAY,
                     linespacing=1.35)
 
     def arrow(x0, y0, x1, y1):
         ax.annotate("", (x1, y1), (x0, y0), arrowprops=dict(arrowstyle="-|>", lw=0.8, color=INK))
 
-    # 패러데이 상자: 식물만 안에 들어간다(회로·파이는 밖)
-    ax.add_patch(FancyBboxPatch((-1.2, 15.6), 21.4, 18.6, boxstyle="round,pad=0.2,rounding_size=0.8",
-                                fc="none", ec=GREEN, lw=1.0, ls=(0, (4, 2))))
-    ax.text(9.5, 35.6, "패러데이 상자 (방충망, GND 연결)", ha="center", fontsize=6.6, color=GREEN)
-    box(0, 17, 19, 15, "식물 줄기", "전극1(위) · 전극2(아래)\n본 실험: 은/염화은, 1 cm\n(예비: 점퍼선 핀, 3 cm)")
-    box(25, 17, 18, 15, "MCP6002 (1개)", "증폭기 2개 내장\n각각 전압 폴로어(이득 1배)\n고역통과 필터 없음")
-    box(49, 17, 21, 15, "ADS1115", "16비트, A0 − A1 차동\n회로 점검: ±0.256 V\n전극 측정: ±2.048 V")
-    box(76, 17, 23, 15, "라즈베리파이 5", "초당 250회 기록\n상자 안 온습도 (DHT11, 60초마다)\nSVM · 랜덤 포레스트", edge=BLUE)
-    arrow(20.6, 24.5, 24.4, 24.5); arrow(43.6, 24.5, 48.4, 24.5); arrow(70.6, 24.5, 75.4, 24.5)
-    ax.text(72.5, 25.5, "I2C", ha="center", fontsize=6.5, color=GRAY)
+    def wire(xs, ys, ls="-", color=INK, end=True):
+        ax.plot(xs[:-1], ys[:-1], color=color, lw=0.8, ls=ls)
+        if end:
+            ax.annotate("", (xs[-1], ys[-1]), (xs[-2], ys[-2]),
+                        arrowprops=dict(arrowstyle="-|>", lw=0.8, color=color, ls=ls))
+        else:
+            ax.plot(xs[-2:], ys[-2:], color=color, lw=0.8, ls=ls)
 
-    box(1, 1, 30, 12, "기준 전압 분압", "3.3 V – 10 kΩ – 10 kΩ – 접지\n중점 1.65 V → 흙 기준 전극")
-    arrow(16, 13.3, 9.5, 15.2)
-    ax.text(33, 7, "0–3.3 V 단전원 회로에서 식물 전위가 1.65 V를\n"
-                   "중심으로 위아래로 움직일 수 있게 한다.\n"
-                   "회로와 라즈베리파이는 상자 밖에 둔다.", fontsize=6.6, color=GRAY, va="center")
+    # 패러데이 상자: 식물과 온습도 센서만 안에(회로·파이는 밖)
+    ax.add_patch(FancyBboxPatch((-1.6, 12), 23.2, 27.5, boxstyle="round,pad=0.2,rounding_size=0.8",
+                                fc="none", ec=GREEN, lw=1.0, ls=(0, (4, 2))))
+    ax.text(-1.6, 43.3, "패러데이 상자 (방충망 6면)", ha="left", fontsize=6.6, color=GREEN)
+    box(0, 14, 19.5, 15.5, "식물 (화분)", "줄기 밑동에 위·아래 전극\n1 cm 간격, 가로 관통\n흙에 기준 전극")
+    box(0.5, 32.3, 15, 4.8, "온습도 센서 DHT11", "", ts=6.2)
+
+    box(30, 14, 18, 15.5, "MCP6002 (1개)", "증폭기 2개 내장\n각각 전압 폴로어(이득 1배)\n고역통과 필터 없음")
+    box(54, 14, 19, 15.5, "ADS1115", "16비트, A0 - A1 차동\n회로 점검: ±0.256 V\n전극 측정: ±2.048 V")
+    box(79, 14, 20, 15.5, "라즈베리파이 5", "초당 250회 전위 기록\n60초마다 온습도 기록\nSVM · 랜덤 포레스트", edge=BLUE)
+
+    # 신호 경로
+    arrow(20.1, 21.5, 29.4, 21.5)
+    ax.text(22.6, 22.4, "위 → 3번\n아래 → 5번", ha="left", va="bottom", fontsize=5.3, color=GRAY, linespacing=1.2)
+    arrow(48.6, 21.5, 53.4, 21.5)
+    ax.text(51, 22.4, "A0\nA1", ha="center", va="bottom", fontsize=5.3, color=GRAY, linespacing=1.2)
+    arrow(73.6, 21.5, 78.4, 21.5)
+    ax.text(76, 22.4, "I2C", ha="center", va="bottom", fontsize=5.6, color=GRAY)
+
+    # 온습도 센서 → 파이(상자 위로)
+    wire([8, 8, 89, 89], [37.4, 41, 41, 30.1])
+    ax.text(50, 41.6, "DHT11 + · out · − → 파이 17 · 7(GPIO4) · 9번 핀", ha="center", fontsize=5.6, color=GRAY)
+
+    # 기준 전압 분압 → 흙 기준 전극, 중점 → ADS1115 A2(점검)
+    box(26, 1, 26, 9.5, "기준 전압 분압", "3.3 V – 10 kΩ – 중점 – 10 kΩ – GND", ts=7.0)
+    wire([26, 15, 15], [5.5, 5.5, 13.7])
+    ax.text(15.6, 8.5, "중점 1.65 V\n→ 흙 기준 전극", ha="left", va="center", fontsize=5.3, color=GRAY, linespacing=1.2)
+    wire([52.4, 60, 60], [5.5, 5.5, 13.7], ls=(0, (3, 2)))
+    ax.text(60.6, 8.5, "A2 (기준 전압 점검)", ha="left", va="center", fontsize=5.3, color=GRAY)
+
+    # 상자 망 → GND
+    wire([1.5, 1.5], [11.8, 4.2], color=GREEN, end=False)
+    for i, w in enumerate((2.2, 1.4, 0.6)):
+        ax.plot([1.5 - w, 1.5 + w], [4.2 - i * 0.9] * 2, color=GREEN, lw=0.8)
+    ax.text(4.5, 4.0, "GND", ha="left", va="center", fontsize=5.6, color=GREEN)
+
+    ax.text(73, 6.5, "회로와 라즈베리파이는 상자 밖에 둔다.\n흙 기준 전극은 망에 닿지 않게 한다.",
+            ha="left", va="center", fontsize=5.6, color=GRAY, linespacing=1.3)
     save(fig, "FIG_SYS.png")
 
 
