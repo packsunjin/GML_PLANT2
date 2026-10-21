@@ -3,15 +3,10 @@
 #
 #   cd ~/project
 #   bash deploy/install.sh            # 대시보드 자동시작만
-#   bash deploy/install.sh --hotspot  # + 파이를 Wi-Fi 핫스팟으로 (공유기 없는 곳용)
 #
 # 되돌리기:
 #   sudo systemctl disable --now plant-dashboard
-#   sudo nmcli connection delete GML-PLANT   # --hotspot 을 썼을 때만
 set -euo pipefail
-
-HOTSPOT=0
-[[ "${1:-}" == "--hotspot" ]] && HOTSPOT=1
 
 # 이 스크립트가 있는 곳의 상위 = 프로젝트 루트. 경로를 하드코딩하지 않는다.
 PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -50,16 +45,6 @@ sed -e "s|__USER__|$RUN_USER|g" \
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now plant-dashboard
-
-if [[ $HOTSPOT -eq 1 ]]; then
-    echo "→ Wi-Fi 핫스팟(GML-PLANT) 등록"
-    sudo nmcli device wifi hotspot ifname wlan0 ssid GML-PLANT password "gml12345" || true
-    # 부팅할 때마다 자동으로 올라오게 한다 (hotspot 명령이 만든 연결 이름은 보통 'Hotspot').
-    for name in GML-PLANT Hotspot; do
-        sudo nmcli connection modify "$name" connection.autoconnect yes 2>/dev/null || true
-    done
-    echo "   폰을 GML-PLANT 에 연결한 뒤  http://10.42.0.1:5000"
-fi
 
 echo
 echo "✅ 등록 완료. 이제 전원만 꽂으면 부팅 후 자동으로 대시보드가 뜹니다."

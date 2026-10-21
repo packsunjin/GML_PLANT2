@@ -171,7 +171,6 @@ http://<파이 IP>:5000        # 예: http://192.168.0.23:5000
 ```bash
 cd ~/project
 bash deploy/install.sh              # 자동시작 등록
-bash deploy/install.sh --hotspot    # + 파이를 Wi-Fi 핫스팟으로 (공유기 없는 발표장용)
 ```
 
 | 확인할 것 | 명령 |
@@ -189,7 +188,6 @@ bash deploy/install.sh --hotspot    # + 파이를 Wi-Fi 핫스팟으로 (공유�
 
 **접속 주소**
 - 같은 Wi-Fi: `http://<파이 IP>:5000` (IP가 매번 바뀌면 `http://<호스트명>.local:5000` 도 됩니다)
-- `--hotspot`으로 등록했으면: 폰을 `GML-PLANT`(비번 `gml12345`)에 연결 → `http://10.42.0.1:5000`
 
 > 센서를 아직 안 붙였으면 하드웨어가 없으므로 자동으로 **시뮬레이션 모드**로 뜹니다.
 > 센서를 붙이면 같은 서비스가 그대로 실제 신호를 읽습니다(코드 수정 불필요).
@@ -214,7 +212,7 @@ project/
   web/                # (4) 초록말 UI (chorokmal.html + static/)
   deploy/
     plant-dashboard.service  # 전원만 꽂으면 자동 실행되게 하는 systemd 유닛 템플릿
-    install.sh               # 위 유닛을 경로/사용자 자동 감지해 설치 (--hotspot 옵션)
+    install.sh               # 위 유닛을 경로/사용자 자동 감지해 설치
     check_sensors.py         # 센서가 왜 안 잡히는지 한 번에 진단
   main.py             # 최상위 실행 진입점
   requirements.txt
@@ -483,15 +481,9 @@ python3 main.py --ui web --port 5000
 ```
 같은 공유기에 붙은 노트북/폰에서 `http://192.168.0.23:5000` 접속.
 
-**② 파이를 Wi-Fi 핫스팟으로 (공유기가 없는 발표장/교실에서 추천)**
-```bash
-sudo nmcli device wifi hotspot ifname wlan0 ssid GML-PLANT password "gml12345"
-```
-폰/노트북을 `GML-PLANT`에 연결한 뒤 `http://10.42.0.1:5000` 접속. (되돌리기: `sudo nmcli connection down Hotspot`)
+**② USB 테더링** — 파이와 노트북을 USB로 연결하면 가상 이더넷이 생겨 `http://<파이 USB IP>:5000`으로 접속됩니다.
 
-**③ USB 테더링** — 파이와 노트북을 USB로 연결하면 가상 이더넷이 생겨 `http://<파이 USB IP>:5000`으로 접속됩니다.
-
-**④ 블루투스 PAN (정말 필요할 때만)**
+**③ 블루투스 PAN (정말 필요할 때만)**
 ```bash
 sudo apt install -y bluez bluez-tools
 sudo bt-network -s nap wlan0        # 파이를 NAP(네트워크 공유) 서버로
