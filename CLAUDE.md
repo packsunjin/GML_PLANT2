@@ -1097,6 +1097,9 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 본 실험 전극(은/염화은 1 cm, 예비는 괄호), 식물을 감싼 점선 '패러데이 상자(방충망, GND 연결)', 파이 칸에 '상자 안 온습도(DHT11, 60초마다)', '회로와 라즈베리파이는 상자 밖'을 넣고
 > `hwpx_repic.py 제출본 결과 image2 report/FIG_SYS.png` 로 바꿈(faraday_design 다음 단계). 클라우드에는 Noto Sans CJK 가 없어 `apt-get install fonts-noto-cjk` 뒤 그렸다(그림 글꼴 같게).
 > 나머지 그림1(주파수)·그림3(1·2단계)·그림4(/live)·사진1~3 은 예비 실험·배선 그대로라 맞다. 사진3 이름표 위치는 여전히 사용자 확인 필요.
+> 같은 날 사용자 "배선에 DHT 없 / 보고서에 정확한 배선이 없잖아" — 부록 배선은 글 한 문단뿐이고 DHT11 이 없었다. `report/stim/dht_wiring.py`(사진3 캡션 "DHT11은 촬영 뒤 추가")
+> → `report/stim/wiring_table.py`(부록 1절에 **표7 측정 회로 배선표** 11줄: MCP6002 핀 1~8, 10 kΩ 분압, ADS1115 A2(기준 점검), ADS1115↔파이 1·6·5·3, DHT11↔파이 17·7·9, 상자 망↔GND; 문단 900069 는 표를 가리키는 짧은 글로)
+> → `hwpx_fillseg.py`. 값은 README·㉞ 와 같다. pagesim 15.5.
 >
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서
 > 직접 고친 판이라 `tpl.html → build_docx.py` 로 다시 만들면 그 수정이 날아간다. **아래 빌드는 돌리지 마라.**
