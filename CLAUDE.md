@@ -1108,6 +1108,7 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 같은 날 사용자 "배선에 DHT 없 / 보고서에 정확한 배선이 없잖아" — 부록 배선은 글 한 문단뿐이고 DHT11 이 없었다. `report/stim/dht_wiring.py`(사진3 캡션 "DHT11은 촬영 뒤 추가")
 > → `report/stim/wiring_table.py`(부록 1절에 **표7 측정 회로 배선표** 11줄: MCP6002 핀 1~8, 10 kΩ 분압, ADS1115 A2(기준 점검), ADS1115↔파이 1·6·5·3, DHT11↔파이 17·7·9, 상자 망↔GND; 문단 900069 는 표를 가리키는 짧은 글로)
 > → `hwpx_fillseg.py`. 값은 README·㉞ 와 같다. pagesim 15.5.
+> 2026-10-22 상자 전 정상 기록(㉝)을 Ⅳ장 3절 맨 앞 문단으로 넣었다(`report/stim/pre_cage_para.py` → hwpx_fillseg, wiring_table 다음 단계). 30분마다 0.01–1 Hz 0.4~16.5 mV(중앙 5.3, 같은 방법으로 밤샘 1.3~8.8·중앙 4.3 재확인), 온도 상관 0.61, DHT11 읽기 영향 0.3 mV 안. 자리 표시 900139 는 상자 안 기록과 비교하는 문구로. pagesim 15.8.
 >
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서
 > 직접 고친 판이라 `tpl.html → build_docx.py` 로 다시 만들면 그 수정이 날아간다. **아래 빌드는 돌리지 마라.**
