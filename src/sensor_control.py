@@ -197,8 +197,8 @@ def sensor_status():
 
 
 # 상태별 저장 파일명(한글). 수집된 원시 CSV는 이 이름으로 data/raw/ 아래에 저장된다.
-# 정상 = 지속 상태, 자극 = 순간 이벤트
-KOR_FILENAMES = {"정상": "정상.csv", "자극": "자극.csv"}
+# 정상 = 지속 상태, 자극 = 순간 이벤트, 수분부족 = 물을 끊은 뒤의 지속 상태(2026-10-28 추가)
+KOR_FILENAMES = {"정상": "정상.csv", "자극": "자극.csv", "수분부족": "수분부족.csv"}
 VALID_STATES = tuple(KOR_FILENAMES.keys())
 
 
@@ -310,6 +310,9 @@ def _sim_core(t, state, rng=None):
         period = 15.0
         phase = (t % period) - 3.0
         sig = 0.0212 * np.exp(-(phase ** 2) / (2 * 2.5 ** 2))
+    elif state == "수분부족":
+        # 시뮬레이션용 자리값. 실제 수분부족 신호 모양은 모른다 — 느린 하강만 넣는다.
+        sig = -0.002 * (t / 3600.0)
     else:
         raise ValueError(f"알 수 없는 상태: {state}")
 

@@ -40,6 +40,7 @@ from feature_extraction import extract_features, FEATURE_NAMES
 FILE_TO_STATE = {
     "정상.csv": "정상",
     "자극.csv": "자극",
+    "수분부족.csv": "수분부족",
 }
 
 # 상태마다 **여러 번 나눠 측정한 파일**을 받는다.
