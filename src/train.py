@@ -62,7 +62,7 @@ from feature_extraction import FEATURE_NAMES
 IMG_SIZE = 224
 
 # 원시 상태(=preprocess.py가 만드는 폴더/라벨). 한글 폰트가 없을 때 confusion matrix용 영어 대체 라벨.
-STATE_EN = {"정상": "Normal", "자극": "Stimulus"}
+STATE_EN = {"정상": "Normal", "자극": "Stimulus", "수분부족": "Water deficit"}
 
 # 비교 과제 정의. 첫 원소가 label 0.
 TASKS = {
