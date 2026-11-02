@@ -1200,6 +1200,10 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 검토 20차(같은 에이전트 2차 심사, `report/stim/review20_fix.json` → hwpx_fillseg): "물을 준 직후 12시간" → "물을 준 지 약 3~15시간 뒤의 12시간"(네 곳), RF 99.8 → 99.9 %. 더 지적 없음.
 > 2026-11-02 **본 실험 그림4** 추가(`report/stim/fig_main.py report/FIG_MAIN.png` → `report/stim/add_fig_main.py` → `hwpx_pics.py … "■ 그림4 넣을 자리=FIG_MAIN.png=34000"`(report 폴더) → hwpx_fillseg, review20 다음 단계).
 > (가) 상자 전 12시간 vs 상자 안 물 준 뒤 12시간, (나) 물 끊은 지 2일째 14시간, (다) 11-02 물 주기 전 30분·물 준 뒤 1시간·화상 45분(지진 시각 점선). Ⅳ-4 끝(900141 뒤)에 넣고 옛 그림4(/live) → **그림5**. 가로 34000(39902 이면 쪽수 19.65 추정이라 줄임). pagesim 19.02(실제 약 18쪽).
+> ⛔ **2026-11-02 한글(한컴)에서 43~45쪽으로 나왔다(사용자).** 10-28 판도 43쪽 — 오늘 고친 것 때문이 아니었다. 원인: `hwpx_fillseg`·`hwpx_picseg`·`hwpx_autoseg` 가
+> 문단마다 줄 배치 vertpos 를 **0 부터** 썼는데, 한글은 vertpos 가 0 으로 돌아가면 새 쪽으로 읽는다. 모두의한글(빈 쪽 문제)만 보고 넣은 줄 배치가 한글을 깨뜨렸다.
+> **`report/hwpx_noseg.py` 로 줄 배치를 전부 지우자 한글에서 17쪽**(사용자 확인). 이제 보고서를 고칠 때 **맨 마지막 단계는 hwpx_noseg** 다(fillseg 를 써도 그 뒤에 noseg).
+> 모두의한글에서는 다시 빈 쪽이 생길 수 있다 — 제출은 한글 기준.
 > **2026-10-12 부터 기준 파일은 `~/Downloads/GML_결과보고서_최종.hwpx` 다(그림1~6 삽입본).** 사용자가 한글에서
 > 직접 고친 판이라 `tpl.html → build_docx.py` 로 다시 만들면 그 수정이 날아간다. **아래 빌드는 돌리지 마라.**
 > hwpx 는 `report/hwpx_edit.py 원본 결과 편집.json` 으로 `<hp:t>` 글자만 바꾼다(바꾼 문단의 linesegarray 삭제,
