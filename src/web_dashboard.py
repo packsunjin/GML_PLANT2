@@ -1342,6 +1342,10 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                         "states": list(TOUCH_STATES),
                         "collected": have, "converted": converted,
                         "sessions": sessions,
+                        # 다음에 저장될 회차 번호(가장 큰 번호 + 1). 개수 + 1 로 보이면
+                        # 빠진 번호가 있을 때 화면과 실제 저장 번호가 달라진다(0절 ㉕·㊲).
+                        "next_session": {s: sensor_control.next_session(_abs(dataset_paths(ds)["raw"]), s)
+                                         for s in TOUCH_STATES},
                         "task_classes": TASK_CLASSES,
                         "task_ready": task_ready, "task_reason": task_reason,
                         "hardware": sensor_control.HARDWARE_AVAILABLE,
