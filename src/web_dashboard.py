@@ -287,7 +287,19 @@ def _payload(result, recent, clf):
         spec = np.asarray(result["spectrogram_db"], dtype=float)
         filt = result["filtered_signal"]
         state, proba, probs = result["state"], result["proba"], result["probs"]
+    # 모델이 실제로 보는 입력(0.01–1 Hz 로 거른 30초 창과 그 스펙트로그램)을 화면에 같이 보낸다.
+    # /live 의 큰 스펙트로그램은 원신호 4.1초 FFT 라 0–1 Hz 대역이 맨 아래 몇 칸에 뭉개져
+    # 판정 근거를 볼 수 없었다(0절 ㊳).
+    model_in = None
+    if result is not None and len(filt):
+        f_axis = np.asarray(result.get("spec_f", []), dtype=float)
+        model_in = {
+            "filt_mv": np.round(np.asarray(filt, dtype=float) * 1000, 3).tolist(),
+            "filt_hz": round(len(filt) / float(clf.window_sec), 4),
+            "spec_fmax": round(float(f_axis[-1]), 3) if f_axis.size else None,
+        }
     return {
+        "model_in": model_in,
         "ready": True,
         "state": state,
         "proba": proba,
