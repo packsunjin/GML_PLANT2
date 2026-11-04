@@ -570,7 +570,9 @@
     var unlimited = (jobEl("unlimited") || {}).checked;
     var dur = parseFloat((jobEl("duration") || {}).value) || 30;
     // 몇 회차로 저장될지 미리 알려준다. 덮어쓴다고 오해하지 않게.
-    var nth = (((jobOpts || {}).sessions || {})[collectPick] || 0) + 1;
+    // 실제 저장 번호는 서버가 계산한 다음 회차(가장 큰 번호 + 1)다. 개수 + 1 이 아니다(0절 ㊲).
+    var nextMap = (jobOpts || {}).next_session || {};
+    var nth = nextMap[collectPick] || ((((jobOpts || {}).sessions || {})[collectPick] || 0) + 1);
     hint.textContent = "'" + collectPick + "' " + nth + "회차 · "
       + (unlimited ? "중지할 때까지 측정합니다" : dur + "초 동안 측정합니다");
     if (!jobRunning) { btn.disabled = false; btn.style.opacity = ""; }
