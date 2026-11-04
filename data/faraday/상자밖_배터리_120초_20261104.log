@@ -1,0 +1,39 @@
+/home/sunjin/venv/lib/python3.13/site-packages/adafruit_blinka/microcontroller/generic_linux/i2c.py:30: RuntimeWarning: I2C frequency is not settable in python, ignoring!
+  warnings.warn(
+[sensor_control] 모드: HARDWARE (DC 결합 (버퍼 + ADS1115 차동))
+[sensor_control] 상태='정상' 샘플링=250.0Hz 길이=120.0s (총 30000 샘플) -> ../data/ds/stim/_extra/정상_18.csv
+[sensor_control] 전극 안정화 대기 (최소 20초, 최대 180초)
+    붙인 직후의 접촉 전위·상처 반응이 가라앉기를 기다립니다.
+        5초  기준점 -0.009V  기울기    +0.0 mV/분
+       10초  기준점 -0.009V  기울기    +0.0 mV/분
+       15초  기준점 -0.009V  기울기    +0.0 mV/분
+       20초  기준점 -0.009V  기울기    -0.0 mV/분
+[sensor_control] 기준점이 안정됐습니다 (20초 소요).
+[sensor_control] 안정화 후 기준점 -0.009V (대기 시작 무렵 -0.009V -> -0.000V 이동)
+[env] 온습도 60초마다 기록 -> ../data/ds/stim/_extra/정상_18.env.csv
+[sensor_control] 수집 중… 5/120초 (1251/30000 샘플, 4%)
+[sensor_control] 수집 중… 10/120초 (2501/30000 샘플, 8%)
+[sensor_control] 수집 중… 15/120초 (3751/30000 샘플, 13%)
+[sensor_control] 수집 중… 20/120초 (5001/30000 샘플, 17%)
+[sensor_control] 수집 중… 25/120초 (6251/30000 샘플, 21%)
+[sensor_control] 수집 중… 30/120초 (7501/30000 샘플, 25%)
+[sensor_control] 수집 중… 35/120초 (8751/30000 샘플, 29%)
+[sensor_control] 수집 중… 40/120초 (10001/30000 샘플, 33%)
+[sensor_control] 수집 중… 45/120초 (11251/30000 샘플, 38%)
+[sensor_control] 수집 중… 50/120초 (12501/30000 샘플, 42%)
+[sensor_control] 수집 중… 55/120초 (13751/30000 샘플, 46%)
+[sensor_control] 수집 중… 60/120초 (15001/30000 샘플, 50%)
+[sensor_control] 수집 중… 65/120초 (16251/30000 샘플, 54%)
+[sensor_control] 수집 중… 70/120초 (17501/30000 샘플, 58%)
+[sensor_control] 수집 중… 75/120초 (18751/30000 샘플, 63%)
+[sensor_control] 수집 중… 80/120초 (20001/30000 샘플, 67%)
+[sensor_control] 수집 중… 85/120초 (21251/30000 샘플, 71%)
+[sensor_control] 수집 중… 90/120초 (22501/30000 샘플, 75%)
+[sensor_control] 수집 중… 95/120초 (23751/30000 샘플, 79%)
+[sensor_control] 수집 중… 100/120초 (25001/30000 샘플, 83%)
+[sensor_control] 수집 중… 105/120초 (26251/30000 샘플, 88%)
+[sensor_control] 수집 중… 110/120초 (27501/30000 샘플, 92%)
+[sensor_control] 수집 중… 115/120초 (28751/30000 샘플, 96%)
+[env] 온습도 3줄 기록(읽기 실패 0줄)
+[sensor_control] 기준점 표류: 출력 +0.0 mV/분 (전극 입력 환산 +0.0017 mV/분, 이번 120초 동안 출력 +0.0 mV)
+[sensor_control] 저장 완료: ../data/ds/stim/_extra/정상_18.csv (30000 rows, 120.0초, 실측 250.0Hz)
