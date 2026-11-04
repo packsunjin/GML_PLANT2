@@ -108,8 +108,12 @@ button[aria-pressed="true"] { background: var(--text-primary); color: var(--surf
   display: grid; gap: 12px;
   grid-template-columns: minmax(300px, 380px) 1fr;
   grid-template-rows: auto auto;
-  grid-template-areas: "gauge spec" "gauge volt";
+  grid-template-areas: "gauge spec" "gauge volt" "model model";
 }
+.t-model { grid-area: model; }
+.t-model .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.t-model .plot { height: 200px; }
+@media (max-width: 820px) { .t-model .pair { grid-template-columns: 1fr; } }
 .tile {
   background: var(--surface); border: 1px solid var(--line);
   display: flex; flex-direction: column; min-width: 0;
@@ -125,7 +129,7 @@ button[aria-pressed="true"] { background: var(--text-primary); color: var(--surf
 .t-spec  { grid-area: spec; }
 .t-volt  { grid-area: volt; }
 @media (max-width: 820px) {
-  .grid { grid-template-columns: 1fr; grid-template-areas: "gauge" "spec" "volt"; }
+  .grid { grid-template-columns: 1fr; grid-template-areas: "gauge" "spec" "volt" "model"; }
 }
 
 /* ── 게이지 ── */
@@ -235,6 +239,15 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
     <section class="tile t-volt">
       <div class="hd"><h2>전위</h2><span class="sub" id="voltSub">최근 90초 · 원신호 0.1초 평균 · mV</span></div>
       <div class="bd"><div class="plot" id="voltPlot"><canvas id="voltCv"></canvas><div class="tip" id="voltTip"></div></div></div>
+    </section>
+
+    <!-- 모델 입력: 판정에 실제로 쓰는 값 -->
+    <section class="tile t-model">
+      <div class="hd"><h2>모델 입력</h2><span class="sub" id="modelSub">판정에 쓰는 마지막 창 · 0.01–1 Hz 로 거른 값</span></div>
+      <div class="bd"><div class="pair">
+        <div class="plot"><canvas id="mFiltCv"></canvas></div>
+        <div class="plot"><canvas id="mSpecCv"></canvas></div>
+      </div></div>
     </section>
   </div>
 </div>
@@ -702,9 +715,61 @@ function startDemo() {
 }
 
 /* ════════════════ 그리기 ════════════════ */
-function render() { renderGauge(); renderHist(); renderSpec(); renderVolt(); }
+/* ════════════════ 모델 입력 (0.01–1 Hz 로 거른 창 + 그 스펙트로그램) ════════════════
+   큰 스펙트로그램은 원신호 4.1초 FFT 라 모델이 보는 0–1 Hz 가 거의 안 보인다(0절 ㊳).
+   여기는 모델이 판정에 쓴 바로 그 값을 그대로 그린다. */
+function renderModel() {
+  const m = latest && latest.model_in;
+  const a = fit($("mFiltCv")), b = fit($("mSpecCv"));
+  [a, b].forEach(o => o.g.clearRect(0, 0, o.w, o.h));
+  const ink = css("--text-primary");
+  if (!m || !m.filt_mv || !m.filt_mv.length) {
+    [a, b].forEach(o => { o.g.fillStyle = css("--text-muted"); o.g.font = "12px system-ui"; o.g.textAlign = "center";
+      o.g.fillText("판정 대기 중(문맥+창 120초가 쌓여야 시작)", o.w / 2, o.h / 2); });
+    return;
+  }
+  // (왼쪽) 거른 파형
+  { const { g, w, h } = a, y = m.filt_mv, n = y.length, win = n / (m.filt_hz || 10);
+    const pw = w - PAD.l - PAD.r, ph = h - PAD.t - PAD.b;
+    let lo = Math.min(...y), hi = Math.max(...y); const pv = Math.max((hi - lo) * 0.12, 0.05); lo -= pv; hi += pv;
+    const X = i => PAD.l + i / Math.max(1, n - 1) * pw, Y = v => PAD.t + (1 - (v - lo) / (hi - lo)) * ph;
+    g.font = "11px system-ui, sans-serif"; g.strokeStyle = css("--grid"); g.fillStyle = css("--text-muted"); g.lineWidth = 1;
+    g.textAlign = "right"; g.textBaseline = "middle";
+    for (const v of niceTicks(lo, hi, 4)) { const yy = Math.round(Y(v)) + 0.5;
+      g.beginPath(); g.moveTo(PAD.l, yy); g.lineTo(PAD.l + pw, yy); g.stroke(); g.fillText(v.toFixed(Math.abs(hi - lo) < 1 ? 3 : 1), PAD.l - 6, yy); }
+    g.textAlign = "center"; g.textBaseline = "top";
+    for (const s of niceTicks(-win, 0, 5)) g.fillText(s === 0 ? "지금" : `${s}초`, PAD.l + (s + win) / win * pw, PAD.t + ph + 6);
+    g.strokeStyle = css("--trace"); g.lineWidth = 2; g.beginPath();
+    y.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v))); g.stroke();
+    g.fillStyle = ink; g.textAlign = "left"; g.textBaseline = "top"; g.fillText("거른 전위 (mV)", PAD.l + 4, PAD.t + 2);
+  }
+  // (오른쪽) 모델 입력 스펙트로그램: latest.spec = 주파수 × 시간(dB)
+  { const { g, w, h } = b, S = latest.spec;
+    const pw = w - SPAD.l - SPAD.r, ph = h - SPAD.t - SPAD.b;
+    if (!Array.isArray(S) || !S.length || !S[0].length) return;
+    const nf = S.length, nt = S[0].length, all = S.flat().slice().sort((p, q) => p - q);
+    const lo = all[0], hi = all[all.length - 1];
+    const img = g.createImageData(nt, nf);
+    for (let fi = 0; fi < nf; fi++) for (let ti = 0; ti < nt; ti++) {
+      const u = Math.max(0, Math.min(1, (S[fi][ti] - lo) / (hi - lo || 1)));
+      const k = Math.round(u * 255) * 3, o = ((nf - 1 - fi) * nt + ti) * 4;
+      img.data[o] = LUT[k]; img.data[o + 1] = LUT[k + 1]; img.data[o + 2] = LUT[k + 2]; img.data[o + 3] = 255;
+    }
+    const off = document.createElement("canvas"); off.width = nt; off.height = nf; off.getContext("2d").putImageData(img, 0, 0);
+    g.imageSmoothingEnabled = false; g.drawImage(off, SPAD.l, SPAD.t, pw, ph);
+    const fHi = m.spec_fmax || 1, win = m.filt_mv.length / (m.filt_hz || 10);
+    g.strokeStyle = ink; g.lineWidth = 1; g.strokeRect(SPAD.l + 0.5, SPAD.t + 0.5, pw - 1, ph - 1);
+    g.font = "12px system-ui, sans-serif"; g.fillStyle = ink; g.textAlign = "right"; g.textBaseline = "middle";
+    for (const f of niceTicks(0, fHi, 2)) { const yy = Math.round(SPAD.t + (1 - f / fHi) * ph) + 0.5; g.fillText(`${f}`, SPAD.l - 8, yy); }
+    g.textAlign = "center"; g.textBaseline = "top";
+    for (const s of niceTicks(-win, 0, 3)) g.fillText(`${s}`, SPAD.l + (s + win) / win * pw, SPAD.t + ph + 8);
+    g.fillText("시간 (초)", SPAD.l + pw / 2, SPAD.t + ph + 26);
+    g.save(); g.translate(14, SPAD.t + ph / 2); g.rotate(-Math.PI / 2); g.textBaseline = "middle"; g.fillText("주파수 (Hz)", 0, 0); g.restore();
+  }
+}
+function render() { renderGauge(); renderHist(); renderSpec(); renderVolt(); renderModel(); }
 function frame() { renderVolt(); requestAnimationFrame(frame); }
-new ResizeObserver(() => { renderSpec(); renderVolt(); }).observe(document.body);
+new ResizeObserver(() => { renderSpec(); renderVolt(); renderModel(); }).observe(document.body);
 // 주파수 범위 버튼 — 실시간 스펙트로그램 페이지와 같은 0–10 Hz / 0–125 Hz
 function setRange(r) {
   specRange = r;
