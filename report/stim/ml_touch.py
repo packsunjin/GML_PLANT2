@@ -23,7 +23,7 @@ from sklearn.svm import SVC
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-RAW = os.path.join(ROOT, "data", "ds", "stim", "raw")
+RAW = os.path.join(ROOT, "data", "ds", "stim", "_extra", "옛식물")  # 2026-11-05 학습 폴더(raw)에서 옮김
 WIN = pp.WINDOW_SEC
 FS = pp.SAMPLE_RATE_HZ
 SLOW = {"dc_level", "dc_slope", "dc_drift"}   # 0절 ⑳ — 실시간과 맞추려고 뺀다
