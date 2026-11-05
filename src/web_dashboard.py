@@ -1069,6 +1069,10 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                 return full
         return None
 
+    def _pi_tz():
+        """파이 시간대(UTC 기준 초). 화면이 브라우저 시간대가 아니라 파이 시각으로 보이게 한다(0절 ㊴)."""
+        return int(time.localtime().tm_gmtoff)
+
     def _entry(full):
         st = os.stat(full)
         return {"path": os.path.relpath(full, root_dir).replace(os.sep, "/"),
@@ -1131,7 +1135,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         p = dataset_paths(ds)
         # features.csv 는 폴더가 아니라 파일 하나라, 그 파일이 있는 폴더를 훑는다.
         feat_dir = os.path.dirname(p["features"]) or "data"
-        return jsonify({"dataset": ds,
+        return jsonify({"tz": _pi_tz(), "dataset": ds,
                         "current_model": os.path.relpath(os.path.realpath(clf.model_path),
                                                          root_dir).replace(os.sep, "/"),
                         "groups": [
@@ -1274,7 +1278,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     @app.route("/api/trash")
     @require_admin
     def api_trash():
-        return jsonify({"items": _trash_entries()})
+        return jsonify({"items": _trash_entries(), "tz": _pi_tz()})
 
     @app.route("/api/trash/restore", methods=["POST"])
     @require_admin
@@ -1380,7 +1384,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                 hist = json.load(f)
         except Exception:
             hist = []
-        return jsonify({"history": list(reversed(hist))[:20]})
+        return jsonify({"history": list(reversed(hist))[:20], "tz": _pi_tz()})
 
     ip_hint = os.environ.get("GML_IP", "<파이 IP>")
     print(f"[web] 브라우저에서 접속:  http://{ip_hint}:{port}   (같은 기기면 http://localhost:{port})")

@@ -50,10 +50,23 @@
     return Math.floor(m / 60) + "시간 " + (m % 60) + "분째";
   }
 
+  // 파이 시간대(UTC 기준 초). 서버가 보내 준다. 브라우저 시간대로 바꾸면
+  // 파이 터미널(ls·로그)에 찍힌 시각과 달라져서 파이 시각으로 맞춘다(0절 ㊴).
+  var piTz = null;
+  function setPiTz(d) { if (d && typeof d.tz === "number") piTz = d.tz; }
+  function piDate(ts) {
+    return piTz == null ? new Date(ts) : new Date(ts + piTz * 1000);
+  }
   function hhmm(ts) {
-    var d = new Date(ts);
-    return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) +
-           ":" + ("0" + d.getSeconds()).slice(-2);
+    var d = piDate(ts), u = piTz != null;
+    var h = u ? d.getUTCHours() : d.getHours(), m = u ? d.getUTCMinutes() : d.getMinutes(),
+        s = u ? d.getUTCSeconds() : d.getSeconds();
+    return ("0" + h).slice(-2) + ":" + ("0" + m).slice(-2) + ":" + ("0" + s).slice(-2);
+  }
+  function mdhm(ts) {
+    var d = piDate(ts), u = piTz != null;
+    var mo = (u ? d.getUTCMonth() : d.getMonth()) + 1, da = u ? d.getUTCDate() : d.getDate();
+    return mo + ". " + da + ". " + hhmm(ts).slice(0, 5);
   }
 
   function cssVal(name) {
@@ -402,10 +415,7 @@
             b.type = "button";
             b.dataset.jobCollect = s;
             b.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
-            // 이미 몇 회차까지 모았는지 보여준다. 다시 누르면 덮어쓰지 않고
-            // 다음 회차로 저장된다.
-            var n = (o.sessions || {})[s] || 0;
-            b.textContent = n ? sd(s) + " (" + n + "회)" : sd(s);
+            b.textContent = sd(s);
             box.appendChild(b);
           });
           var last = remembered("collect", null);
@@ -630,6 +640,7 @@
     fetch("/api/train/history?dataset=" + encodeURIComponent(dsPick), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
+        setPiTz(d);
         var hist = d.history || [];
         if (!hist.length) {
           box.innerHTML = "<p>아직 학습 기록이 없어요</p>";
@@ -651,8 +662,7 @@
                        pct(h.false_alarm_rate || 0);
             }
           }
-          var when = h.trained_at ? new Date(h.trained_at * 1000).toLocaleString("ko-KR",
-                       { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+          var when = h.trained_at ? mdhm(h.trained_at * 1000) : "";
           var li = document.createElement("li");
           li.textContent = td(h.task || "") + " — " + (h.mode || "") + " · " + (h.best_name || "") +
                             " · train " + (h.train_n != null ? h.train_n : "?") +
@@ -1044,6 +1054,7 @@
       fetch("/api/trash", { cache: "no-store" }).then(function (r) { return r.json(); })
     ]).then(function (res) {
       var d = res[0];
+      setPiTz(d);
       // 휴지통을 마지막 탭으로 붙인다(파일 그룹과 같은 모양으로 다루기 위해).
       d.groups = d.groups.concat([{
         key: TRASH_KEY, title: "휴지통", kind: "trash",
