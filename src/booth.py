@@ -28,8 +28,10 @@ PLOT_SEC = 40.0          # 화면 그래프 길이
 PLOT_AVG_SEC = 0.1
 MIN_REC_SEC, MAX_REC_SEC = 4.0, 30.0
 LABELS = ("비접촉", "접촉")
-FEATURES = ("기준선에서 벗어난 크기(mV)", "기준선 차이(mV, 부호 있음)", "창 안 흔들림(mV)",
-            "창 안 최대-최소(mV)", "0.1초 사이 최대 변화(mV)", "표본 사이 잔떨림(mV)")
+# 특징 이름은 관람객이 읽는 화면에 그대로 나온다(문턱 하나 모델의 기준). 단위는 전부 mV.
+FEATURES = ("평소 전압에서 벗어난 크기", "평소 전압과의 차이", "2초 동안의 흔들림",
+            "2초 동안의 최대-최소", "0.1초 사이 가장 큰 변화", "아주 빠른 잔떨림")
+SHOWN = {"비접촉": "손 뗌", "접촉": "손 올림"}          # 화면에 보일 라벨 이름
 MODEL_NAMES = ("문턱 하나", "SVM", "랜덤 포레스트")
 
 
@@ -162,10 +164,10 @@ class BoothTouch:
                     return False, f"'{label}' 기록이 없습니다"
                 if len(mine) >= 2:
                     parts = [(s, "train") for s in mine[:-1]] + [(mine[-1], "test")]
-                    split_how.append(f"{label}: 마지막 기록으로 평가")
+                    split_how.append(f"{SHOWN[label]}은 마지막 기록")
                 else:
                     parts = [(mine[0], "half")]
-                    split_how.append(f"{label}: 기록 뒤 절반으로 평가")
+                    split_how.append(f"{SHOWN[label]}은 기록의 뒤 절반")
                 for s, how in parts:
                     ends = self._windows(s)
                     feats = [(e, self._feat_at(e)) for e in ends]
@@ -199,8 +201,10 @@ class BoothTouch:
                     "per_label": {LABELS[li]: [hit[li], tot[li]] for li in range(len(LABELS))}}
             if name == "문턱 하나":
                 tr = model.tree_
-                info["rule"] = (f"{FEATURES[int(tr.feature[0])]} > {float(tr.threshold[0]):.2f} 이면 "
-                                f"{LABELS[int(np.argmax(tr.value[2]))]}") if tr.feature[0] >= 0 else "나눌 기준을 찾지 못함"
+                name_f = FEATURES[int(tr.feature[0])]
+                josa = "이" if (ord(name_f[-1]) - 0xAC00) % 28 else "가"          # 받침이 있으면 '이'
+                info["rule"] = (f"{name_f}{josa} {float(tr.threshold[0]):.1f} mV 보다 크면 "
+                                f"{SHOWN[LABELS[int(np.argmax(tr.value[2]))]]}") if tr.feature[0] >= 0 else "나눌 기준을 찾지 못함"
             made[name] = info
         with self.lock:
             self.models = made
