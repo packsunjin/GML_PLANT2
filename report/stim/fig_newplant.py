@@ -18,7 +18,7 @@ plt.rcParams["axes.unicode_minus"] = False
 C_OK, C_DRY = "#1f6fb4", "#c0504d"
 d = json.load(open(os.path.join(os.path.dirname(__file__), "newplant_stats.json"), encoding="utf-8"))
 col = lambda n, k: np.array([r[k] for r in d[n]["rows"]])
-fig, ax = plt.subplots(3, 1, figsize=(7.2, 6.6), sharex=True, gridspec_kw=dict(height_ratios=[1.25, 1, 1]))
+fig, ax = plt.subplots(3, 1, figsize=(7.2, 5.7), sharex=True, gridspec_kw=dict(height_ratios=[1.25, 1, 1]))
 SPAN = [(14.45, 19.5, "#f3e3c3"), ]
 for a in ax:
     a.axvspan(14.45, 19.5, color="#f6e7c8", lw=0)
