@@ -37,6 +37,9 @@ from inference import RealtimeClassifier, SAMPLE_RATE_HZ
 
 # 최신 결과를 담는 공유 상태 (백그라운드 스레드가 갱신, 웹 요청이 읽음)
 _latest = {"ready": False}
+# 부스 화면(/booth 체험, /farm 전시)용. 실시간 루프가 읽은 표본을 그대로 넘겨받는다(src/booth.py).
+_booth = [None]
+_farm = [None]
 _lock = threading.Lock()
 
 # ---- 상자 안 온습도(DHT11, ㉞) — 화면 표시용. 기록은 수집기(sensor_control)가 따로 한다 ----
@@ -378,6 +381,8 @@ def _worker(clf, source):
             while _pause.is_set():
                 time.sleep(0.2)
             result = clf.step()
+            if _booth[0] is not None:
+                _booth[0].feed(clf.buffer[-1])      # 방금 읽은 표본
             if result is None:
                 # 판정을 못 하는 이유를 화면에 알린다. 안 알리면 화면은 '신호 끊김'으로 보인다
                 # (0절 ㉒: 옛 필터 모델은 판정하지 않고, 새 필터는 문맥+창이 찰 때까지 기다린다).
@@ -400,6 +405,8 @@ def _worker(clf, source):
                     src_kind, src_label = clf.input_source()
                     payload["source_kind"] = src_kind
                     payload["source"] = src_label
+                    if _farm[0] is not None:
+                        _farm[0].update(payload["state"])
                     with _lock:
                         old_err = _latest.get("worker_error")
                         _latest.clear()
@@ -435,6 +442,8 @@ def _worker(clf, source):
                 src_kind, src_label = clf.input_source()
                 payload["source_kind"] = src_kind   # hardware / sim / csv
                 payload["source"] = src_label       # 사람이 읽는 라벨
+                if _farm[0] is not None:
+                    _farm[0].update(payload["state"])
                 with _lock:
                     _latest.clear()
                     _latest.update(payload)
@@ -523,6 +532,9 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     print(f"[web] 모델 로드: {clf.model_name}, 클래스={clf.classes}")
     print(f"[web] 입력 소스: {source[1]}")
 
+    import booth as _booth_mod
+    _booth[0] = _booth_mod.BoothTouch(clf.sample_rate)
+    _farm[0] = _booth_mod.FarmPump()
     threading.Thread(target=_worker, args=(clf, source), daemon=True).start()
     threading.Thread(target=_env_worker, daemon=True).start()
 
@@ -644,6 +656,78 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         resp = send_from_directory(os.path.dirname(p), "live.html")
         resp.headers["Cache-Control"] = "no-store"
         return resp
+
+    # ---- 부스 화면 ------------------------------------------------------
+    # /booth = 손 접촉 머신러닝 체험(2초 창, 기록·모델은 메모리에만), /farm = 스마트팜 전시(수분부족 판정 → 펌프).
+    # 관람객이 쓰는 화면이라 관리자 로그인을 요구하지 않는다(저장소의 자료·모델을 바꾸지 않는다).
+    def _booth_page(name):
+        p = os.path.join(web_dir, name) if web_dir else None
+        if not p or not os.path.isfile(p):
+            return f"web/{name} 이 없습니다", 404
+        resp = send_from_directory(os.path.dirname(p), name)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.route("/booth")
+    def booth_page():
+        return _booth_page("booth.html")
+
+    @app.route("/farm")
+    def farm_page():
+        return _booth_page("farm.html")
+
+    def _booth_status():
+        d = _booth[0].status()
+        kind, label = clf.input_source()
+        d["source_kind"], d["source"] = kind, label
+        d["paused"] = _pause.is_set()
+        return d
+
+    @app.route("/api/booth")
+    def api_booth():
+        return jsonify(_booth_status())
+
+    @app.route("/api/booth/<action>", methods=["POST"])
+    def api_booth_action(action):
+        body = request.get_json(silent=True) or {}
+        b = _booth[0]
+        if action == "record":
+            ok, err = b.start_record(body.get("label"), float(body.get("seconds", 8)))
+        elif action == "train":
+            ok, err = b.train()
+        elif action == "select":
+            ok, err = b.select(body.get("name"))
+        elif action == "reset":
+            b.reset(); ok, err = True, None
+        else:
+            return jsonify({"ok": False, "error": "모르는 동작"}), 404
+        d = _booth_status()
+        d["ok"], d["error"] = ok, err
+        return jsonify(d)
+
+    def _farm_status():
+        d = _farm[0].status()
+        with _lock:
+            d["classes"] = list(_latest.get("classes") or [])
+            d["proba"] = _latest.get("proba")
+            d["worker_error"] = _latest.get("worker_error")
+            d["signal"] = list(_latest.get("signal") or [])
+            d["signal_hz"] = _latest.get("signal_hz")
+        d["model"] = clf.model_name
+        d["window_sec"] = clf.window_sec
+        d["env"] = env_status()
+        kind, label = clf.input_source()
+        d["source_kind"], d["source"] = kind, label
+        return d
+
+    @app.route("/api/farm")
+    def api_farm():
+        return jsonify(_farm_status())
+
+    @app.route("/api/farm/test", methods=["POST"])
+    def api_farm_test():
+        _farm[0].test()
+        return jsonify(_farm_status())
 
     @app.route("/data")
     def data():

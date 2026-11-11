@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>손 접촉 머신러닝 체험</title>
+<style>
+/* 색은 /live 와 같은 이름·값을 쓴다(비접촉 = st-a, 접촉 = st-b). */
+:root {
+  color-scheme: light;
+  --bg:#f3f3f1; --surface:#fcfcfb; --line:#d9d8d3; --grid:#ebeae6;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#8a8984;
+  --trace:#2a78d6; --st-a:#1baf7a; --st-b:#eb6834; --st-unknown:#a3a29c; --critical:#d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark;
+    --bg:#121211; --surface:#1a1a19; --line:#33332f; --grid:#262624;
+    --text-primary:#f0efec; --text-secondary:#c3c2b7; --text-muted:#8f8e86;
+    --trace:#3987e5; --st-a:#199e70; --st-b:#d95926; --st-unknown:#6d6c66; --critical:#e05c5c; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text-primary);
+  font-family: system-ui, -apple-system, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; line-height:1.5; }
+main { max-width:1100px; margin:0 auto; padding:16px; }
+header { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 16px; margin-bottom:12px; }
+h1 { font-size:1.5rem; margin:0; }
+.src { color:var(--text-muted); font-size:.9rem; }
+.grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+.card h2 { font-size:1.05rem; margin:0 0 8px; }
+.num { display:inline-block; width:1.6em; height:1.6em; line-height:1.6em; text-align:center; border-radius:50%;
+  background:var(--text-primary); color:var(--surface); font-weight:700; margin-right:6px; font-size:.9rem; }
+button { font:inherit; padding:10px 16px; border-radius:10px; border:1px solid var(--line);
+  background:var(--surface); color:var(--text-primary); cursor:pointer; min-height:44px; }
+button:disabled { opacity:.45; cursor:default; }
+button.a { border-color:var(--st-a); border-width:2px; font-weight:700; }
+button.b { border-color:var(--st-b); border-width:2px; font-weight:700; }
+button.go { background:var(--text-primary); color:var(--surface); font-weight:700; }
+.row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.muted { color:var(--text-secondary); font-size:.92rem; }
+.wide { grid-column: 1 / -1; }
+canvas { width:100%; height:220px; display:block; }
+.legend { display:flex; gap:16px; font-size:.85rem; color:var(--text-secondary); margin-top:4px; flex-wrap:wrap; }
+.sw { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+#verdict { font-size:3.2rem; font-weight:800; line-height:1.1; margin:6px 0; }
+#verdict.a { color:var(--st-a); } #verdict.b { color:var(--st-b); } #verdict.u { color:var(--st-unknown); }
+.bar { height:14px; border-radius:7px; background:var(--grid); overflow:hidden; }
+.bar > i { display:block; height:100%; width:0; background:var(--st-b); transition:width .25s; }
+.models { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+@media (max-width: 760px) { .models { grid-template-columns: 1fr; } }
+.model { text-align:left; padding:10px 12px; }
+.model[aria-pressed="true"] { border-color:var(--trace); border-width:2px; }
+.model b { display:block; font-size:1.05rem; }
+.model .acc { font-size:1.5rem; font-weight:800; }
+.model small { color:var(--text-secondary); display:block; }
+#msg { color:var(--critical); min-height:1.4em; }
+#countdown { font-size:1.6rem; font-weight:800; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>손 접촉 머신러닝 체험</h1>
+  <span class="src" id="src">연결 중…</span>
+</header>
+
+<div class="grid">
+  <section class="card wide">
+    <h2>지금 식물에서 읽는 전압</h2>
+    <canvas id="chart" aria-label="최근 40초 전압 그래프"></canvas>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--trace)"></i>전압(0.1초 평균, mV)</span>
+      <span><i class="sw" style="background:var(--st-a)"></i>손 뗀 상태로 기록한 구간</span>
+      <span><i class="sw" style="background:var(--st-b)"></i>손 올린 상태로 기록한 구간</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">1</span>자료 모으기</h2>
+    <p class="muted">손을 <b>뗀</b> 상태와 잎에 손을 <b>올린</b> 상태를 각각 8초씩 기록합니다. 버튼을 누르고 끝날 때까지 그대로 있어 주세요.</p>
+    <div class="row">
+      <button class="a" id="recA">손 떼고 기록 (8초)</button>
+      <button class="b" id="recB">손 올리고 기록 (8초)</button>
+    </div>
+    <p id="recState" class="muted">기록: 손 뗌 0번 · 손 올림 0번</p>
+    <p id="countdown" aria-live="polite"></p>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">2</span>학습시키기</h2>
+    <p class="muted">모은 자료를 2초씩 잘라 세 가지 모델을 학습합니다. 정확도는 학습에 쓰지 않은 구간으로 잽니다.</p>
+    <div class="row">
+      <button class="go" id="train">학습하기</button>
+      <button id="reset">처음부터 다시</button>
+    </div>
+    <p id="trainInfo" class="muted"></p>
+    <p id="msg" aria-live="polite"></p>
+  </section>
+
+  <section class="card wide">
+    <h2><span class="num">3</span>모델 고르기</h2>
+    <div class="models" id="models"><p class="muted">아직 학습한 모델이 없습니다.</p></div>
+  </section>
+
+  <section class="card wide">
+    <h2><span class="num">4</span>지금 판정</h2>
+    <div id="verdict" class="u">판정 없음</div>
+    <div class="bar" aria-hidden="true"><i id="pbar"></i></div>
+    <p id="pText" class="muted">모델을 학습하면 2초마다의 판정이 여기에 나옵니다.</p>
+    <p class="muted">이 모델이 가르는 것은 식물의 반응이 아니라 <b>손이 닿았는지</b>입니다. 사람 몸도 전기가 통해서, 손이 닿는 순간 몸의 전압이 전극에 더해집니다.</p>
+  </section>
+</div>
+</main>
+
+<script>
+/* 계산은 전부 서버(src/booth.py)가 한다. 이 화면은 /api/booth 가 준 값을 그대로 그린다. */
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let last = null, busy = false;
+
+async function call(path, body) {
+  const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)} : {});
+  return r.json();
+}
+async function act(action, body) {
+  if (busy) return;
+  busy = true; $("msg").textContent = "";
+  try {
+    const d = await call("/api/booth/" + action, body || {});
+    if (!d.ok && d.error) $("msg").textContent = d.error;
+    render(d);
+  } catch (e) { $("msg").textContent = "서버에 연결하지 못했습니다"; }
+  busy = false;
+}
+$("recA").onclick = () => act("record", {label:"비접촉", seconds:8});
+$("recB").onclick = () => act("record", {label:"접촉", seconds:8});
+$("train").onclick = () => { $("msg").textContent = "학습 중…"; act("train"); };
+$("reset").onclick = () => act("reset");
+
+function draw(d) {
+  const c = $("chart"), dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth, H = c.clientHeight;
+  if (c.width !== W * dpr) { c.width = W * dpr; c.height = H * dpr; }
+  const g = c.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const padL = 52, padB = 22, padT = 8, w = W - padL - 8, h = H - padT - padB;
+  const y = d.signal_mv, span = d.plot_sec, x = t => padL + (t + span) / span * w;   // t: 지금 = 0, 과거 = 음수
+  const band = (s, col) => { const a = Math.max(-span, s.t[0]), b = Math.min(0, s.t[1]);
+    if (b <= a) return; g.globalAlpha = .22; g.fillStyle = col; g.fillRect(x(a), padT, x(b) - x(a), h); g.globalAlpha = 1; };
+  d.segments.forEach(s => band(s, css(s.label === "접촉" ? "--st-b" : "--st-a")));
+  if (d.recording) band(d.recording, css(d.recording.label === "접촉" ? "--st-b" : "--st-a"));
+  g.strokeStyle = css("--grid"); g.fillStyle = css("--text-muted"); g.font = "12px system-ui"; g.lineWidth = 1;
+  let lo = 0, hi = 1;
+  if (y.length) { lo = Math.min(...y); hi = Math.max(...y); const m = Math.max(1, (hi - lo) * .15); lo -= m; hi += m; }
+  for (let i = 0; i <= 4; i++) { const v = lo + (hi - lo) * i / 4, yy = padT + h - h * i / 4;
+    g.beginPath(); g.moveTo(padL, yy); g.lineTo(padL + w, yy); g.stroke();
+    g.textAlign = "right"; g.fillText(v.toFixed(0), padL - 6, yy + 4); }
+  g.textAlign = "center";
+  for (let t = -span; t <= 0; t += 10) g.fillText(t === 0 ? "지금" : (-t) + "초 전", x(t), H - 5);
+  g.save(); g.translate(12, padT + h / 2); g.rotate(-Math.PI / 2); g.fillText("mV", 0, 0); g.restore();
+  if (y.length > 1) { g.strokeStyle = css("--trace"); g.lineWidth = 1.6; g.beginPath();
+    const dt = 1 / d.signal_hz;
+    y.forEach((v, i) => { const xx = x(-(y.length - 1 - i) * dt), yy = padT + h - (v - lo) / (hi - lo) * h;
+      i ? g.lineTo(xx, yy) : g.moveTo(xx, yy); }); g.stroke(); }
+}
+
+function render(d) {
+  last = d;
+  $("src").textContent = d.paused ? "수집 작업 중이라 잠시 멈춤" :
+    (d.source_kind === "hardware" ? "센서 연결됨" : "센서 없음 — " + (d.source || "시뮬레이션"));
+  draw(d);
+  const rec = d.recording;
+  $("recA").disabled = $("recB").disabled = !!rec;
+  $("countdown").textContent = rec ? (rec.label === "접촉" ? "손을 올린 채로 " : "손을 뗀 채로 ") + Math.ceil(rec.left) + "초" : "";
+  $("recState").textContent = "기록: 손 뗌 " + d.counts["비접촉"] + "번 · 손 올림 " + d.counts["접촉"] + "번";
+  const can = d.counts["비접촉"] > 0 && d.counts["접촉"] > 0 && !rec;
+  $("train").disabled = !can;
+  $("trainInfo").textContent = d.train ? "학습 창 " + d.train.n_train + "개, 평가 창 " + d.train.n_test + "개 (" + d.train.split.join(" / ") + ")" : "";
+  if ($("msg").textContent === "학습 중…" && d.train) $("msg").textContent = "";
+  const box = $("models");
+  if (!d.models.length) { box.innerHTML = '<p class="muted">아직 학습한 모델이 없습니다.</p>'; }
+  else {
+    box.innerHTML = "";
+    d.models.forEach(m => {
+      const b = document.createElement("button"); b.className = "model";
+      b.setAttribute("aria-pressed", m.name === d.selected);
+      const pl = m.per_label;
+      b.innerHTML = "<b></b><span class='acc'></span><small></small><small></small>";
+      b.children[0].textContent = m.name;
+      b.children[1].textContent = m.correct + " / " + m.total + " 맞힘";
+      b.children[2].textContent = "손 뗌 " + pl["비접촉"][0] + "/" + pl["비접촉"][1] + " · 손 올림 " + pl["접촉"][0] + "/" + pl["접촉"][1];
+      b.children[3].textContent = m.rule ? "기준: " + m.rule : "특징 6개를 함께 봄";
+      b.onclick = () => act("select", {name: m.name});
+      box.appendChild(b);
+    });
+  }
+  const v = $("verdict"), p = d.pred;
+  if (!p) { v.textContent = "판정 없음"; v.className = "u"; $("pbar").style.width = "0";
+    $("pText").textContent = d.models.length ? "판정을 준비하고 있습니다." : "모델을 학습하면 2초마다의 판정이 여기에 나옵니다."; }
+  else { const touch = p.label === "접촉";
+    v.textContent = touch ? "손이 닿았어요" : "손이 떨어져 있어요"; v.className = touch ? "b" : "a";
+    const pt = p.probs["접촉"] || 0; $("pbar").style.width = (pt * 100).toFixed(0) + "%";
+    $("pText").textContent = "'" + d.selected + "' 모델 · 손이 닿았을 가능성 " + (pt * 100).toFixed(0) + "% · 최근 " + d.window_sec + "초로 판정"; }
+}
+
+async function tick() {
+  if (!busy) { try { render(await call("/api/booth")); } catch (e) { $("src").textContent = "서버 연결 끊김"; } }
+  setTimeout(tick, 400);
+}
+tick();
+window.addEventListener("resize", () => last && draw(last));
+</script>
+</body>
+</html>
