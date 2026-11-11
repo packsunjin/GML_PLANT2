@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>식물 전기신호 스마트팜</title>
+<style>
+/* 색은 /live 와 같은 이름·값을 쓴다(정상 = st-a, 자극 = st-b, 수분부족 = st-c). */
+:root {
+  color-scheme: light;
+  --bg:#f3f3f1; --surface:#fcfcfb; --line:#d9d8d3; --grid:#ebeae6;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#8a8984;
+  --trace:#2a78d6; --st-a:#1baf7a; --st-b:#eb6834; --st-c:#2a78d6; --st-unknown:#a3a29c;
+  --warning:#fab219; --critical:#d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark;
+    --bg:#121211; --surface:#1a1a19; --line:#33332f; --grid:#262624;
+    --text-primary:#f0efec; --text-secondary:#c3c2b7; --text-muted:#8f8e86;
+    --trace:#3987e5; --st-a:#199e70; --st-b:#d95926; --st-c:#3987e5; --st-unknown:#6d6c66; --critical:#e05c5c; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text-primary);
+  font-family: system-ui, -apple-system, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; line-height:1.5; }
+main { max-width:1100px; margin:0 auto; padding:16px; }
+header { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 16px; margin-bottom:12px; }
+h1 { font-size:1.5rem; margin:0; }
+.src { color:var(--text-muted); font-size:.9rem; }
+.grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+.card h2 { font-size:1.05rem; margin:0 0 8px; }
+.wide { grid-column: 1 / -1; }
+.muted { color:var(--text-secondary); font-size:.92rem; }
+canvas { width:100%; height:200px; display:block; }
+#state { font-size:3rem; font-weight:800; line-height:1.1; margin:6px 0; color:var(--st-unknown); }
+#pump { font-size:3rem; font-weight:800; line-height:1.1; margin:6px 0; color:var(--st-unknown); }
+#pump.on { color:var(--st-c); }
+.flow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-weight:700; }
+.flow span { padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); }
+.flow i { font-style:normal; color:var(--text-muted); }
+.bar { height:14px; border-radius:7px; background:var(--grid); overflow:hidden; }
+.bar > i { display:block; height:100%; width:0; background:var(--st-c); transition:width .3s; }
+button { font:inherit; padding:10px 16px; border-radius:10px; border:1px solid var(--line);
+  background:var(--surface); color:var(--text-primary); cursor:pointer; min-height:44px; }
+#notice { border-left:4px solid var(--warning); padding:6px 10px; margin:8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>식물 전기신호 스마트팜</h1>
+  <span class="src" id="src">연결 중…</span>
+</header>
+
+<div class="grid">
+  <section class="card wide">
+    <h2>어떻게 움직이나</h2>
+    <div class="flow">
+      <span>줄기의 전극</span><i>→</i><span>전압 측정</span><i>→</i><span>머신러닝 판정</span><i>→</i>
+      <span>'수분부족'이면</span><i>→</i><span>펌프로 물 주기</span>
+    </div>
+  </section>
+
+  <section class="card wide">
+    <h2>지금 식물에서 읽는 전압</h2>
+    <canvas id="chart" aria-label="최근 전압 그래프"></canvas>
+    <p class="muted" id="envText"></p>
+  </section>
+
+  <section class="card">
+    <h2>모델의 판정</h2>
+    <div id="state">판정 없음</div>
+    <p class="muted" id="stateText"></p>
+    <div class="bar" aria-hidden="true"><i id="hold"></i></div>
+    <p class="muted" id="holdText"></p>
+  </section>
+
+  <section class="card">
+    <h2>펌프</h2>
+    <div id="pump">꺼짐</div>
+    <p class="muted" id="pumpText"></p>
+    <p class="muted" id="notice"></p>
+    <button id="test">시험: 15초 동안 '수분부족'으로 가정</button>
+  </section>
+</div>
+</main>
+
+<script>
+/* 판정·펌프 판단은 전부 서버가 한다(src/booth.py FarmPump). 이 화면은 /api/farm 값을 그대로 보인다. */
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const COLOR = {"정상":"--st-a", "자극":"--st-b", "수분부족":"--st-c"};
+let buf = [], lastT = 0, last = null;
+
+function draw() {
+  const c = $("chart"), dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
+  if (c.width !== W * dpr) { c.width = W * dpr; c.height = H * dpr; }
+  const g = c.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const padL = 56, padT = 8, padB = 22, w = W - padL - 8, h = H - padT - padB, y = buf;
+  let lo = 0, hi = 1;
+  if (y.length) { lo = Math.min(...y); hi = Math.max(...y); const m = Math.max(1, (hi - lo) * .15); lo -= m; hi += m; }
+  g.strokeStyle = css("--grid"); g.fillStyle = css("--text-muted"); g.font = "12px system-ui";
+  for (let i = 0; i <= 4; i++) { const v = lo + (hi - lo) * i / 4, yy = padT + h - h * i / 4;
+    g.beginPath(); g.moveTo(padL, yy); g.lineTo(padL + w, yy); g.stroke();
+    g.textAlign = "right"; g.fillText(v.toFixed(0), padL - 6, yy + 4); }
+  g.textAlign = "left"; g.fillText("mV · 최근 약 60초", padL, H - 5);
+  if (y.length > 1) { g.strokeStyle = css("--trace"); g.lineWidth = 1.6; g.beginPath();
+    y.forEach((v, i) => { const xx = padL + i / (N - 1) * w, yy = padT + h - (v - lo) / (hi - lo) * h;
+      i ? g.lineTo(xx, yy) : g.moveTo(xx, yy); }); g.stroke(); }
+}
+let N = 600;
+
+function render(d) {
+  last = d;
+  $("src").textContent = d.source_kind === "hardware" ? "센서 연결됨" : "센서 없음 — " + (d.source || "시뮬레이션");
+  /* 전압: 서버가 준 0.1초 평균을 지난 폴링 뒤 흐른 시간만큼만 이어 붙인다. */
+  const now = performance.now(), hz = d.signal_hz || 10;
+  N = Math.round(60 * hz);
+  if (d.signal && d.signal.length) {
+    const n = lastT ? Math.min(d.signal.length, Math.max(1, Math.round((now - lastT) / 1000 * hz))) : d.signal.length;
+    buf = buf.concat(d.signal.slice(-n).map(v => v * 1000)).slice(-N);
+  }
+  lastT = now; draw();
+  const e = d.env;
+  $("envText").textContent = e && e.temp_c != null ? "상자 안 " + e.temp_c + " °C · 습도 " + e.humidity_pct + " %" : "";
+  const st = d.testing ? d.target : d.state, s = $("state");
+  s.textContent = st || "판정 없음";
+  s.style.color = css(COLOR[st] || "--st-unknown");
+  $("stateText").textContent = d.testing ? "시험 중 — 실제 판정이 아니라 '수분부족'으로 가정한 것입니다 (" + d.test_left + "초 남음)"
+    : (d.state && d.state !== "판정 없음"
+        ? "모델 " + d.model + (d.proba != null ? " · 확신 " + (d.proba * 100).toFixed(0) + "%" : "") + " · 최근 " + d.window_sec + "초로 판정"
+        : (d.worker_error || "아직 판정이 없습니다."));
+  $("hold").style.width = Math.min(100, d.held_sec / d.hold_sec * 100).toFixed(0) + "%";
+  $("holdText").textContent = "'수분부족'이 " + d.hold_sec + "초 이어지면 펌프를 " + d.run_sec + "초 켭니다. 지금 " + d.held_sec.toFixed(0) + "초째.";
+  const p = $("pump"); p.textContent = d.pump_on ? "물 주는 중" : "꺼짐"; p.className = d.pump_on ? "on" : "";
+  $("pumpText").textContent = d.pump_on ? d.pump_left + "초 남음 · 지금까지 " + d.runs + "번"
+    : (d.rest_left > 0 ? "다음 물 주기까지 " + d.rest_left.toFixed(0) + "초 쉼 · 지금까지 " + d.runs + "번" : "지금까지 " + d.runs + "번 물을 줌");
+  $("notice").textContent = d.connected ? "" : "펌프가 아직 연결되지 않았습니다. 지금은 화면에만 표시하고 실제 물은 나오지 않습니다.";
+  $("notice").style.display = d.connected ? "none" : "";
+}
+$("test").onclick = async () => { try { render(await (await fetch("/api/farm/test", {method:"POST"})).json()); } catch (e) {} };
+async function tick() {
+  try { render(await (await fetch("/api/farm")).json()); } catch (e) { $("src").textContent = "서버 연결 끊김"; }
+  setTimeout(tick, 500);
+}
+tick();
+window.addEventListener("resize", draw);
+</script>
+</body>
+</html>
