@@ -36,6 +36,9 @@ KEEP_SEC = 180.0         # 원신호 보관
 PLOT_SEC = 30.0          # 화면 전압 그래프 길이
 PLOT_AVG_SEC = 0.1
 REC_SEC = 8.0            # 정상·자극 기록 길이
+STALE_SEC = 3.0          # 기록 중 표본이 이만큼 안 들어오면(수집 작업이 센서를 가져감 등) 기록을 멈춘다
+READY_TIMEOUT_SEC = 90.0 # 정상·자극 준비 화면에서 이만큼 아무도 안 누르면 메인으로
+DONE_TIMEOUT_SEC = 60.0  # '모델이 생성되었습니다' 에서 이만큼 지나면 그 모델을 고르고 메인으로
 LABELS = ("정상", "자극")
 SPEC_NPERSEG, SPEC_HOP, SPEC_FMAX = 256, 8, 62.5
 SPEC_VIEW_HOP = 32       # 화면용 30초 스펙트로그램의 이동(0.128초) — 보낼 양을 줄이려고 모델(8)보다 성기게
@@ -63,6 +66,14 @@ def money_rate(acc):
 
 
 class Booth:
+    @property
+    def phase(self):
+        return self._phase
+
+    @phase.setter
+    def phase(self, v):
+        self._phase, self._t_phase = v, time.time()     # 단계가 바뀐 시각(시간 초과 판단용)
+
     def __init__(self, fs, store_dir=STORE_DIR):
         self.fs = float(fs)
         self.store_dir = store_dir
@@ -78,6 +89,7 @@ class Booth:
         self._gap = int(BASE_GAP_SEC * self.fs)
         self._since_pred = 0
         # 체험 한 번의 진행 상태
+        self.last_feed = 0.0             # 마지막 표본을 받은 시각
         self.phase = "main"
         self.school = None
         self.rec = None                  # {"label", "start", "end"}
@@ -141,6 +153,7 @@ class Booth:
             p = self.count % self.n_keep
             self.buf[p] = self.buf[p + self.n_keep] = v
             self.count += 1
+            self.last_feed = time.time()
             if self.rec and self.count >= self.rec["end"]:
                 self._record_done()
             self._since_pred += 1
@@ -191,6 +204,9 @@ class Booth:
             if self.phase not in ("normal_ready", "stim_ready"):
                 return False, "지금은 기록할 단계가 아닙니다"
             label = LABELS[0] if self.phase == "normal_ready" else LABELS[1]
+            if time.time() - self.last_feed > STALE_SEC:
+                return False, "센서 신호가 들어오지 않습니다"
+            self.error = None
             self.rec = {"label": label, "start": self.count, "end": self.count + int(REC_SEC * self.fs)}
             self.phase = "normal_rec" if label == LABELS[0] else "stim_rec"
         return True, None
@@ -303,8 +319,23 @@ class Booth:
                 self.phase, self.school, self.segments = "main", None, {}
 
     # ── 화면에 줄 값 ───────────────────────────────────────────────
+    def _housekeep(self, now):
+        """화면이 0.3초마다 status() 를 부를 때 같이 본다: 끊긴 기록, 떠난 관람객."""
+        if self.rec and now - self.last_feed > STALE_SEC:
+            label = self.rec["label"]
+            self.rec = None
+            self.phase = "normal_ready" if label == LABELS[0] else "stim_ready"
+            self.error = "신호가 끊겨 기록을 멈췄습니다. 다시 기록하세요"
+        elif self.phase in ("normal_ready", "stim_ready") and now - self._t_phase > READY_TIMEOUT_SEC:
+            self.phase, self.school, self.segments, self.error = "main", None, {}, None
+        elif self.phase == "done" and now - self._t_phase > DONE_TIMEOUT_SEC:
+            if self.new_id in self.models:
+                self.selected, self.pred = self.new_id, None
+            self.phase, self.school, self.new_id = "main", None, None
+
     def status(self):
         with self.lock:
+            self._housekeep(time.time())
             fs = self.fs
             blk = max(1, int(round(PLOT_AVG_SEC * fs)))
             n = min(int(PLOT_SEC * fs), self.count, self.n_keep) // blk * blk
