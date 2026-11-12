@@ -15,7 +15,7 @@ FarmPump  : /farm 전시. 본 판정이 '수분부족'으로 일정 시간 이�
             펌프(마이크로비트) 연결은 아직 없다 — connected=False.
 
 스펙트로그램: 창 앞 20초의 중앙값(기준선)을 뺀 원신호 2초(500표본)를 64표본 창·16표본 이동으로 STFT,
-0–62.5 Hz(33칸, 1.95 Hz 간격) × 47칸(0.032초 간격), 로그 세기(dB). 11-12 사용자 지시로 17×28 에서 촘촘하게 바꿈 —
+0–62.5 Hz(65칸, 0.98 Hz 간격) × 31칸(0.032초 간격), 로그 세기(dB). 11-12 사용자 지시로 17×28 → 33×47 → 65×31 로 촘촘하게 —
 화면 그림과 모델 입력은 같은 배열이다. 평균이 아니라 기준선을 빼므로 손을 올린 동안의 전압 차이가 0 Hz 줄에 남는다.
 """
 import glob
@@ -37,7 +37,7 @@ PLOT_SEC = 30.0          # 화면 전압 그래프 길이
 PLOT_AVG_SEC = 0.1
 REC_SEC = 8.0            # 정상·자극 기록 길이
 LABELS = ("정상", "자극")
-SPEC_NPERSEG, SPEC_HOP, SPEC_FMAX = 128, 8, 62.5
+SPEC_NPERSEG, SPEC_HOP, SPEC_FMAX = 256, 8, 62.5
 SPEC_VIEW_HOP = 32       # 화면용 30초 스펙트로그램의 이동(0.128초) — 보낼 양을 줄이려고 모델(8)보다 성기게
 DB_FLOOR = -160.0        # 로그 세기 바닥(V^2 기준 dB)
 CV_FOLDS = 4             # 교차검증: 기록마다 시간 순서로 이만큼 토막을 낸다
@@ -47,7 +47,7 @@ STORE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 
 def spectrogram(win_v, base_v, fs, hop=None):
     """원신호(V)에서 기준선을 빼고 STFT → (주파수 × 시간) dB 배열과 주파수축.
-    모델 입력은 2초 창·hop=SPEC_HOP 으로 33 × 47. 화면의 30초 그림은 같은 창 길이에 이동만 SPEC_VIEW_HOP."""
+    모델 입력은 2초 창·hop=SPEC_HOP 으로 65 × 31. 화면의 30초 그림은 같은 창 길이에 이동만 SPEC_VIEW_HOP."""
     hop = hop or SPEC_HOP
     from scipy import signal
     base = float(np.median(base_v)) if len(base_v) else float(np.median(win_v))
@@ -321,7 +321,7 @@ class Booth:
                 m["money"] = int(m["rate"] * max(0.0, now - m["created"]))
                 models.append(m)
             models.sort(key=lambda m: (-m["money"], -m["created"]))
-            # 화면용: 최근 PLOT_SEC 초를 모델과 같은 STFT(창 128표본)로. 오른쪽 끝 WIN_SEC 초가 모델이 보는 구간이다.
+            # 화면용: 최근 PLOT_SEC 초를 모델과 같은 STFT(창 SPEC_NPERSEG 표본)로. 오른쪽 끝 WIN_SEC 초가 모델이 보는 구간이다.
             spec = None
             m = min(int(PLOT_SEC * fs), self.count, self.n_keep)
             if m >= SPEC_NPERSEG:
