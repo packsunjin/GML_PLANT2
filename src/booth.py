@@ -38,18 +38,21 @@ PLOT_AVG_SEC = 0.1
 REC_SEC = 8.0            # 정상·자극 기록 길이
 LABELS = ("정상", "자극")
 SPEC_NPERSEG, SPEC_HOP, SPEC_FMAX = 128, 8, 62.5
+SPEC_VIEW_HOP = 32       # 화면용 30초 스펙트로그램의 이동(0.128초) — 보낼 양을 줄이려고 모델(8)보다 성기게
 DB_FLOOR = -160.0        # 로그 세기 바닥(V^2 기준 dB)
 CV_FOLDS = 4             # 교차검증: 기록마다 시간 순서로 이만큼 토막을 낸다
 MONEY_MAX = 100          # 정확도 100 % 모델이 1초에 버는 돈(원). 50 %(우연)면 0원
 STORE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "booth")
 
 
-def spectrogram(win_v, base_v, fs):
-    """2초 창(원신호 V)에서 기준선을 빼고 STFT → (주파수 33 × 시간 47) dB 배열과 주파수축."""
+def spectrogram(win_v, base_v, fs, hop=None):
+    """원신호(V)에서 기준선을 빼고 STFT → (주파수 × 시간) dB 배열과 주파수축.
+    모델 입력은 2초 창·hop=SPEC_HOP 으로 33 × 47. 화면의 30초 그림은 같은 창 길이에 이동만 SPEC_VIEW_HOP."""
+    hop = hop or SPEC_HOP
     from scipy import signal
     base = float(np.median(base_v)) if len(base_v) else float(np.median(win_v))
     f, _, s = signal.spectrogram(np.asarray(win_v) - base, fs=fs, nperseg=SPEC_NPERSEG,
-                                 noverlap=SPEC_NPERSEG - SPEC_HOP, detrend=False, scaling="spectrum")
+                                 noverlap=SPEC_NPERSEG - hop, detrend=False, scaling="spectrum")
     keep = f <= SPEC_FMAX
     return np.maximum(10 * np.log10(s[keep] + 1e-30), DB_FLOOR), f[keep]
 
@@ -85,7 +88,7 @@ class Booth:
         self.models = {}                 # id → {"meta": {...}, "model": 분류기}
         self.selected = None
         self.pred = None
-        self.spec = None                 # 화면용: 지금 창의 스펙트로그램
+        self.spec = None                 # 마지막 판정에 쓴 창의 스펙트로그램(화면은 status() 의 30초 그림)
         self.spec_f = None
         self._shape = spectrogram(np.zeros(self._win), np.zeros(0), self.fs)[0].shape   # (주파수, 시간)
         self._load()
@@ -318,10 +321,14 @@ class Booth:
                 m["money"] = int(m["rate"] * max(0.0, now - m["created"]))
                 models.append(m)
             models.sort(key=lambda m: (-m["money"], -m["created"]))
+            # 화면용: 최근 PLOT_SEC 초를 모델과 같은 STFT(창 128표본)로. 오른쪽 끝 WIN_SEC 초가 모델이 보는 구간이다.
             spec = None
-            if self.spec is not None:
-                spec = {"db": np.round(self.spec, 1).tolist(), "fmax": SPEC_FMAX,
-                        "df": round(float(self.spec_f[1] - self.spec_f[0]), 4), "sec": WIN_SEC}
+            m = min(int(PLOT_SEC * fs), self.count, self.n_keep)
+            if m >= SPEC_NPERSEG:
+                x = self._recent()[-m:]
+                db, f = spectrogram(x, x, fs, hop=SPEC_VIEW_HOP)
+                spec = {"db": np.round(db, 1).tolist(), "fmax": SPEC_FMAX, "df": round(float(f[1] - f[0]), 4),
+                        "sec": round(m / fs, 2), "view_sec": PLOT_SEC, "model_sec": WIN_SEC}
             new = self.models[self.new_id]["meta"] if self.new_id in self.models else None
             return {"ok": True, "phase": self.phase, "school": self.school, "recording": rec, "error": self.error,
                     "new_model": new,
