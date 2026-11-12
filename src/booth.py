@@ -15,7 +15,8 @@ FarmPump  : /farm 전시. 본 판정이 '수분부족'으로 일정 시간 이�
             펌프(마이크로비트) 연결은 아직 없다 — connected=False.
 
 스펙트로그램: 창 앞 20초의 중앙값(기준선)을 뺀 원신호 2초(500표본)를 64표본 창·16표본 이동으로 STFT,
-0–62.5 Hz(17칸) × 28칸, 로그 세기(dB). 평균이 아니라 기준선을 빼므로 손을 올린 동안의 전압 차이가 0 Hz 줄에 남는다.
+0–62.5 Hz(33칸, 1.95 Hz 간격) × 47칸(0.032초 간격), 로그 세기(dB). 11-12 사용자 지시로 17×28 에서 촘촘하게 바꿈 —
+화면 그림과 모델 입력은 같은 배열이다. 평균이 아니라 기준선을 빼므로 손을 올린 동안의 전압 차이가 0 Hz 줄에 남는다.
 """
 import glob
 import json
@@ -36,7 +37,7 @@ PLOT_SEC = 30.0          # 화면 전압 그래프 길이
 PLOT_AVG_SEC = 0.1
 REC_SEC = 8.0            # 정상·자극 기록 길이
 LABELS = ("정상", "자극")
-SPEC_NPERSEG, SPEC_HOP, SPEC_FMAX = 64, 16, 62.5
+SPEC_NPERSEG, SPEC_HOP, SPEC_FMAX = 128, 8, 62.5
 DB_FLOOR = -160.0        # 로그 세기 바닥(V^2 기준 dB)
 CV_FOLDS = 4             # 교차검증: 기록마다 시간 순서로 이만큼 토막을 낸다
 MONEY_MAX = 100          # 정확도 100 % 모델이 1초에 버는 돈(원). 50 %(우연)면 0원
@@ -44,7 +45,7 @@ STORE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 
 
 def spectrogram(win_v, base_v, fs):
-    """2초 창(원신호 V)에서 기준선을 빼고 STFT → (주파수 17 × 시간 28) dB 배열과 주파수축."""
+    """2초 창(원신호 V)에서 기준선을 빼고 STFT → (주파수 33 × 시간 47) dB 배열과 주파수축."""
     from scipy import signal
     base = float(np.median(base_v)) if len(base_v) else float(np.median(win_v))
     f, _, s = signal.spectrogram(np.asarray(win_v) - base, fs=fs, nperseg=SPEC_NPERSEG,
@@ -86,6 +87,7 @@ class Booth:
         self.pred = None
         self.spec = None                 # 화면용: 지금 창의 스펙트로그램
         self.spec_f = None
+        self._shape = spectrogram(np.zeros(self._win), np.zeros(0), self.fs)[0].shape   # (주파수, 시간)
         self._load()
 
     # ── 저장 ───────────────────────────────────────────────────────
@@ -94,6 +96,11 @@ class Booth:
         for p in sorted(glob.glob(os.path.join(self.store_dir, "*.joblib"))):
             try:
                 b = joblib.load(p)
+                n = getattr(b["model"], "n_features_in_", None)
+                if n is not None and n != int(np.prod(self._shape)):
+                    # 스펙트로그램 크기가 바뀌기 전(11-12 이전 17×28)에 만든 모델 — 지금 입력으로는 판정할 수 없다
+                    print(f"[booth] 스펙트로그램 크기가 달라 안 읽음: {p} (입력 {n}, 지금 {int(np.prod(self._shape))})")
+                    continue
                 self.models[b["meta"]["id"]] = b
             except Exception as e:                       # 깨진 파일 하나 때문에 서버가 안 뜨면 안 된다
                 print(f"[booth] 모델 파일을 못 읽음: {p} ({type(e).__name__}: {e})")
@@ -279,7 +286,7 @@ class Booth:
                     "cv_acc": acc, "rate": money_rate(acc),
                     "n_windows": {LABELS[li]: int(np.sum(y == li)) for li in range(len(LABELS))},
                     "rec_sec": REC_SEC, "window_sec": WIN_SEC,
-                    "spec": {"nperseg": SPEC_NPERSEG, "hop": SPEC_HOP, "fmax": SPEC_FMAX, "shape": [int(X.shape[1] // 28), 28]}}
+                    "spec": {"nperseg": SPEC_NPERSEG, "hop": SPEC_HOP, "fmax": SPEC_FMAX, "shape": list(self._shape)}}
             bundle = {"meta": meta, "model": model}
             self._save(bundle)
             with self.lock:
