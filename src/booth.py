@@ -5,9 +5,9 @@ booth.py — 부스 체험·전시용 판정 (2026-11-12 다시 짬)
 ADC 를 따로 읽지 않는다(같은 칩을 두 프로그램이 읽으면 안 된다 — CLAUDE.md 2절).
 
 Booth     : /booth 머신러닝 체험. 흐름은 서버가 쥔다(화면은 phase 만 보고 그린다).
-              main → (학교 이름 입력, start) → normal_ready → normal_rec → stim_ready → stim_rec → training → main
-            정상·자극을 REC_SEC 초씩 기록 → 2초 창의 **스펙트로그램**으로 SVM·랜덤 포레스트를 학습 →
-            평가가 더 좋은 쪽을 그 학교의 모델로 저장 → 메인에서 모델을 골라 실시간 판정을 본다.
+              main → (학교 이름 입력, start) → normal_ready → normal_rec → stim_ready → stim_rec → training → done → main
+            정상·자극을 REC_SEC 초씩 기록 → 2초 창의 **스펙트로그램** 전부로 SVM 을 학습(나눠서 평가하지 않는다) →
+            그 학교의 모델로 저장 → done("모델이 생성되었습니다") 에서 '모델 선택하기'(select) → 메인에서 실시간 판정을 본다.
             모델은 data/booth/<id>.joblib 에 저장한다(서버를 다시 켜도 남는다, git 에는 안 넣는다).
 FarmPump  : /farm 전시. 본 판정이 '수분부족'으로 일정 시간 이어지면 펌프를 켠다.
             펌프(마이크로비트) 연결은 아직 없다 — connected=False.
@@ -70,6 +70,7 @@ class Booth:
         self.rec = None                  # {"label", "start", "end"}
         self.segments = {}               # 라벨 → {"start", "end"}
         self.error = None
+        self.new_id = None               # done 단계에서 보여 줄 방금 만든 모델
         # 저장된 모델
         self.models = {}                 # id → {"meta": {...}, "model": 분류기}
         self.selected = None
@@ -179,14 +180,17 @@ class Booth:
         with self.lock:
             if self.phase == "training":
                 return False, "학습 중에는 멈출 수 없습니다"
-            self.phase, self.school, self.rec, self.segments = "main", None, None, {}
+            self.phase, self.school, self.rec, self.segments, self.new_id = "main", None, None, {}, None
         return True, None
 
     def select(self, mid):
+        """모델을 고른다. done 단계의 '모델 선택하기'도 이것을 부르고, 그러면 메인으로 돌아간다."""
         with self.lock:
             if mid is not None and mid not in self.models:
                 return False, "없는 모델입니다"
             self.selected, self.pred = mid, None
+            if self.phase == "done":
+                self.phase, self.school, self.new_id = "main", None, None
         return True, None
 
     def delete(self, mid):
@@ -212,58 +216,33 @@ class Booth:
         return out
 
     def _train(self):
-        """정상·자극 기록의 앞 절반으로 학습하고 뒤 절반으로 평가한다(창이 겹치므로 섞어 나누면 정확도가 부풀려진다).
-        앞 절반과 겹치는 창은 평가에서 뺀다. SVM·랜덤 포레스트 가운데 균형 정확도가 높은 쪽을 저장한다."""
+        """정상·자극 기록에서 만든 창을 **전부** 학습에 쓴다(체험용이라 나눠서 평가하지 않는다). 분류기는 SVM."""
         try:
-            from sklearn.ensemble import RandomForestClassifier
             from sklearn.pipeline import make_pipeline
             from sklearn.preprocessing import StandardScaler
             from sklearn.svm import SVC
             with self.lock:
                 school, segs = self.school, dict(self.segments)
-                Xtr, ytr, Xte, yte = [], [], [], []
+                X, y = [], []
                 for li, label in enumerate(LABELS):
-                    seg = segs[label]
-                    mid = (seg["start"] + seg["end"]) // 2
-                    for e, x in self._windows(seg):
-                        if e <= mid:
-                            Xtr.append(x); ytr.append(li)
-                        elif e - self._win >= mid:
-                            Xte.append(x); yte.append(li)
-            if len(set(ytr)) < 2 or len(set(yte)) < 2:
+                    for _, x in self._windows(segs[label]):
+                        X.append(x); y.append(li)
+            if len(set(y)) < 2:
                 raise RuntimeError("기록에서 창을 만들지 못했습니다")
-            Xtr, ytr, Xte, yte = map(np.asarray, (Xtr, ytr, Xte, yte))
-
-            def score(pred):
-                hit = [int(np.sum((pred == li) & (yte == li))) for li in range(len(LABELS))]
-                tot = [int(np.sum(yte == li)) for li in range(len(LABELS))]
-                return {"correct": int(np.sum(pred == yte)), "total": int(len(yte)),
-                        "balanced": round(float(np.mean([h / t for h, t in zip(hit, tot)])), 3),
-                        "per_label": {LABELS[li]: [hit[li], tot[li]] for li in range(len(LABELS))}}
-
-            cands = {"SVM": make_pipeline(StandardScaler(), SVC(probability=True, random_state=0)),
-                     "랜덤 포레스트": RandomForestClassifier(n_estimators=100, random_state=0)}
-            results = {}
-            for name, m in cands.items():
-                m.fit(Xtr, ytr)
-                results[name] = score(m.predict(Xte))
-            # 견줄 기준: 창 전체 세기(스펙트로그램 평균 dB) 하나에 문턱 하나
-            from sklearn.tree import DecisionTreeClassifier
-            stump = DecisionTreeClassifier(max_depth=1, random_state=0).fit(Xtr.mean(axis=1, keepdims=True), ytr)
-            baseline = score(stump.predict(Xte.mean(axis=1, keepdims=True)))
-            algo = max(results, key=lambda k: (results[k]["balanced"], k == "SVM"))
+            X, y = np.asarray(X), np.asarray(y)
+            model = make_pipeline(StandardScaler(), SVC(probability=True, random_state=0)).fit(X, y)
             now = time.time()
             mid_ = time.strftime("%Y%m%d_%H%M%S", time.localtime(now))
-            meta = {"id": mid_, "school": school, "created": now, "algo": algo, **results[algo],
-                    "others": {k: v for k, v in results.items() if k != algo}, "threshold_baseline": baseline,
-                    "n_train": int(len(ytr)), "n_test": int(len(yte)), "rec_sec": REC_SEC, "window_sec": WIN_SEC,
-                    "spec": {"nperseg": SPEC_NPERSEG, "hop": SPEC_HOP, "fmax": SPEC_FMAX, "shape": [int(Xtr.shape[1] // 28), 28]}}
-            bundle = {"meta": meta, "model": cands[algo]}
+            meta = {"id": mid_, "school": school, "created": now, "algo": "SVM",
+                    "n_windows": {LABELS[li]: int(np.sum(y == li)) for li in range(len(LABELS))},
+                    "rec_sec": REC_SEC, "window_sec": WIN_SEC,
+                    "spec": {"nperseg": SPEC_NPERSEG, "hop": SPEC_HOP, "fmax": SPEC_FMAX, "shape": [int(X.shape[1] // 28), 28]}}
+            bundle = {"meta": meta, "model": model}
             self._save(bundle)
             with self.lock:
                 self.models[mid_] = bundle
-                self.selected, self.pred = mid_, None
-                self.phase, self.school, self.segments = "main", None, {}
+                self.new_id = mid_
+                self.phase, self.segments = "done", {}
         except Exception as e:
             print(f"[booth] 학습 실패: {type(e).__name__}: {e}")
             with self.lock:
@@ -286,7 +265,9 @@ class Booth:
             if self.spec is not None:
                 spec = {"db": np.round(self.spec, 1).tolist(), "fmax": SPEC_FMAX,
                         "df": round(float(self.spec_f[1] - self.spec_f[0]), 4), "sec": WIN_SEC}
+            new = self.models[self.new_id]["meta"] if self.new_id in self.models else None
             return {"ok": True, "phase": self.phase, "school": self.school, "recording": rec, "error": self.error,
+                    "new_model": new,
                     "models": models, "selected": self.selected, "pred": self.pred, "labels": list(LABELS),
                     "signal_mv": np.round(sig, 3).tolist(), "signal_hz": round(fs / blk, 3), "plot_sec": PLOT_SEC,
                     "spec": spec, "rec_sec": REC_SEC, "window_sec": WIN_SEC}

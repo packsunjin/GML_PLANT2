@@ -34,7 +34,7 @@ canvas { display: block; width: 100%; max-width: 720px; }
 
   <h2>모델</h2>
   <table id="models">
-    <thead><tr><th>학교</th><th>만든 시각</th><th>방식</th><th>평가</th><th></th></tr></thead>
+    <thead><tr><th>학교</th><th>만든 시각</th><th>방식</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>
@@ -81,6 +81,12 @@ canvas { display: block; width: 100%; max-width: 720px; }
   <h1>모델 학습 중입니다</h1>
 </section>
 
+<section data-screen="done">
+  <h1>모델이 생성되었습니다</h1>
+  <p><span class="school"></span></p>
+  <button id="pickNew">모델 선택하기</button>
+</section>
+
 <script>
 const $ = id => document.getElementById(id);
 const all = (sel, fn) => document.querySelectorAll(sel).forEach(fn);
@@ -106,6 +112,7 @@ $("schoolForm").onsubmit = async ev => {
   if (d && d.ok) entering = false; else if (d) $("schoolErr").textContent = d.error || "";
 };
 all(".rec", b => b.onclick = () => act("record"));
+$("pickNew").onclick = () => { if (last && last.new_model) act("select", {id: last.new_model.id}); };
 all(".cancel", b => b.onclick = () => { entering = false; if (last && last.phase !== "main") act("cancel"); else show(); });
 
 function show() {
@@ -169,7 +176,6 @@ function render(d) {
       tr.insertCell().textContent = m.school;
       tr.insertCell().textContent = new Date(m.created * 1000).toLocaleTimeString("ko-KR", {hour: "2-digit", minute: "2-digit"});
       tr.insertCell().textContent = m.algo;
-      tr.insertCell().textContent = m.correct + "/" + m.total;
       const b = document.createElement("button");
       b.textContent = m.id === d.selected ? "선택됨" : "선택"; b.disabled = m.id === d.selected;
       b.onclick = () => act("select", {id: m.id});
