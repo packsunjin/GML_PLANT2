@@ -2009,7 +2009,7 @@ function drawSpec(c, d) {
 const won = n => n.toLocaleString("ko-KR") + "원";
 function render(d) {
   last = d;
-  if (d.phase === "main" && !entering && !idle && Date.now() - lastTouch > IDLE_SEC * 1000) idle = true;
+  if (d.phase === "main" && !idle && Date.now() - lastTouch > IDLE_SEC * 1000) { entering = false; idle = true; }   // 학교 이름 입력 중 떠나도 대기로
   show();
   const kind = d.paused ? "busy" : d.source_kind === "hardware" ? "ok" : "sim";
   $("sensorStatus").textContent = kind === "busy" ? "수집 작업 중" : kind === "ok" ? "센서 연결됨" : "센서 없음 (시뮬레이션)";

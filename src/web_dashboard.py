@@ -691,6 +691,10 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     def api_booth_action(action):
         body = request.get_json(silent=True) or {}
         b = _booth[0]
+        if action in ("start", "record") and _pause.is_set():
+            # 수집 작업이 센서를 쓰는 동안은 부스로 신호가 안 들어온다
+            d = _booth_status(); d.update(ok=False, error="수집 작업이 센서를 쓰고 있습니다. 끝난 뒤 하세요")
+            return jsonify(d)
         if action == "start":
             ok, err = b.start(body.get("school"))
         elif action == "record":
