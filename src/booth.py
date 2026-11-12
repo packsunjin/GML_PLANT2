@@ -8,6 +8,8 @@ Booth     : /booth 머신러닝 체험. 흐름은 서버가 쥔다(화면은 pha
               main → (학교 이름 입력, start) → normal_ready → normal_rec → stim_ready → stim_rec → training → done → main
             정상·자극을 REC_SEC 초씩 기록 → 2초 창의 **스펙트로그램** 전부로 SVM 을 학습(나눠서 평가하지 않는다) →
             그 학교의 모델로 저장 → done("모델이 생성되었습니다") 에서 '모델 선택하기'(select) → 메인에서 실시간 판정을 본다.
+            돈: 모델마다 만든 순간부터 초당 일정 금액이 쌓인다(먼저 만든 모델이 먼저 번다). 초당 금액은 교차검증 정확도로
+            정한다 — 우연(50 %)이면 0원, 100 %면 MONEY_MAX 원. 최종 모델은 그대로 창 전부로 학습한다.
             모델은 data/booth/<id>.joblib 에 저장한다(서버를 다시 켜도 남는다, git 에는 안 넣는다).
 FarmPump  : /farm 전시. 본 판정이 '수분부족'으로 일정 시간 이어지면 펌프를 켠다.
             펌프(마이크로비트) 연결은 아직 없다 — connected=False.
@@ -36,6 +38,8 @@ REC_SEC = 8.0            # 정상·자극 기록 길이
 LABELS = ("정상", "자극")
 SPEC_NPERSEG, SPEC_HOP, SPEC_FMAX = 64, 16, 62.5
 DB_FLOOR = -160.0        # 로그 세기 바닥(V^2 기준 dB)
+CV_FOLDS = 4             # 교차검증: 기록마다 시간 순서로 이만큼 토막을 낸다
+MONEY_MAX = 100          # 정확도 100 % 모델이 1초에 버는 돈(원). 50 %(우연)면 0원
 STORE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "booth")
 
 
@@ -47,6 +51,11 @@ def spectrogram(win_v, base_v, fs):
                                  noverlap=SPEC_NPERSEG - SPEC_HOP, detrend=False, scaling="spectrum")
     keep = f <= SPEC_FMAX
     return np.maximum(10 * np.log10(s[keep] + 1e-30), DB_FLOOR), f[keep]
+
+
+def money_rate(acc):
+    """정확도(0~1) → 1초에 버는 돈(원). 우연(0.5) 이하면 0."""
+    return int(round(max(0.0, (float(acc) - 0.5) * 2) * MONEY_MAX))
 
 
 class Booth:
@@ -215,6 +224,38 @@ class Booth:
                 out.append((e, s.ravel()))
         return out
 
+    def _cv_accuracy(self, segs):
+        """시간 순서 토막 교차검증의 균형 정확도(0~1). 토막 하나를 빼고, 그 토막과 시간이 겹치는 창도 학습에서 뺀다
+        (창이 겹치므로 섞어 나누면 정확도가 부풀려진다). 돈 버는 속도에만 쓴다."""
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.svm import SVC
+        with self.lock:
+            wins = [self._windows(segs[label]) for label in LABELS]      # 라벨마다 [(창 끝, 벡터)]
+        accs = []
+        for k in range(CV_FOLDS):
+            Xtr, ytr, Xte, yte = [], [], [], []
+            for li, w in enumerate(wins):
+                if not w:
+                    continue
+                n = len(w)
+                lo_i, hi_i = k * n // CV_FOLDS, (k + 1) * n // CV_FOLDS
+                if hi_i <= lo_i:
+                    continue
+                t0, t1 = w[lo_i][0] - self._win, w[hi_i - 1][0]           # 빼는 토막이 덮는 표본 범위
+                for i, (e, x) in enumerate(w):
+                    if lo_i <= i < hi_i:
+                        Xte.append(x); yte.append(li)
+                    elif e <= t0 or e - self._win >= t1:
+                        Xtr.append(x); ytr.append(li)
+            if len(set(ytr)) < 2 or len(set(yte)) < 2:
+                continue
+            yte = np.asarray(yte)
+            m = make_pipeline(StandardScaler(), SVC(random_state=0)).fit(np.asarray(Xtr), ytr)
+            pred = m.predict(np.asarray(Xte))
+            accs.append(float(np.mean([np.mean(pred[yte == li] == li) for li in set(yte.tolist())])))
+        return round(float(np.mean(accs)), 3) if accs else 0.5
+
     def _train(self):
         """정상·자극 기록에서 만든 창을 **전부** 학습에 쓴다(체험용이라 나눠서 평가하지 않는다). 분류기는 SVM."""
         try:
@@ -230,10 +271,12 @@ class Booth:
             if len(set(y)) < 2:
                 raise RuntimeError("기록에서 창을 만들지 못했습니다")
             X, y = np.asarray(X), np.asarray(y)
+            acc = self._cv_accuracy(segs)
             model = make_pipeline(StandardScaler(), SVC(probability=True, random_state=0)).fit(X, y)
             now = time.time()
             mid_ = time.strftime("%Y%m%d_%H%M%S", time.localtime(now))
             meta = {"id": mid_, "school": school, "created": now, "algo": "SVM",
+                    "cv_acc": acc, "rate": money_rate(acc),
                     "n_windows": {LABELS[li]: int(np.sum(y == li)) for li in range(len(LABELS))},
                     "rec_sec": REC_SEC, "window_sec": WIN_SEC,
                     "spec": {"nperseg": SPEC_NPERSEG, "hop": SPEC_HOP, "fmax": SPEC_FMAX, "shape": [int(X.shape[1] // 28), 28]}}
@@ -260,7 +303,14 @@ class Booth:
             if self.rec:
                 rec = {"label": self.rec["label"], "total": REC_SEC,
                        "left": round(max(0.0, (self.rec["end"] - self.count) / fs), 1)}
-            models = sorted((b["meta"] for b in self.models.values()), key=lambda m: -m["created"])
+            now = time.time()
+            models = []
+            for b in self.models.values():
+                m = dict(b["meta"])
+                m["rate"] = money_rate(m.get("cv_acc", m.get("balanced", 0.5)))   # 11-12 전 모델은 앞·뒤 절반 평가값
+                m["money"] = int(m["rate"] * max(0.0, now - m["created"]))
+                models.append(m)
+            models.sort(key=lambda m: (-m["money"], -m["created"]))
             spec = None
             if self.spec is not None:
                 spec = {"db": np.round(self.spec, 1).tolist(), "fmax": SPEC_FMAX,

@@ -34,7 +34,7 @@ canvas { display: block; width: 100%; max-width: 720px; }
 
   <h2>모델</h2>
   <table id="models">
-    <thead><tr><th>학교</th><th>만든 시각</th><th>방식</th><th></th></tr></thead>
+    <thead><tr><th>학교</th><th>번 돈</th><th>1초에</th><th>만든 시각</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </section>
@@ -169,19 +169,22 @@ function render(d) {
   $("probs").textContent = d.pred ? d.labels.map(l => l + " " + Math.round((d.pred.probs[l] || 0) * 100) + "%").join(" · ") : "";
   drawSignal(d); drawSpec(d);
   const tb = $("models").tBodies[0], key = d.models.map(m => m.id).join() + "|" + d.selected;
+  const money = () => d.models.forEach((m, i) => { const c = tb.rows[i] && tb.rows[i].querySelector(".money"); if (c) c.textContent = m.money.toLocaleString("ko-KR") + "원"; });
   if (tb.dataset.key !== key) {
     tb.dataset.key = key; tb.innerHTML = "";
     d.models.forEach(m => {
       const tr = tb.insertRow();
       tr.insertCell().textContent = m.school;
+      tr.insertCell().className = "money";
+      tr.insertCell().textContent = m.rate.toLocaleString("ko-KR") + "원";
       tr.insertCell().textContent = new Date(m.created * 1000).toLocaleTimeString("ko-KR", {hour: "2-digit", minute: "2-digit"});
-      tr.insertCell().textContent = m.algo;
       const b = document.createElement("button");
       b.textContent = m.id === d.selected ? "선택됨" : "선택"; b.disabled = m.id === d.selected;
       b.onclick = () => act("select", {id: m.id});
       tr.insertCell().append(b);
     });
   }
+  money();
 }
 
 async function tick() {
