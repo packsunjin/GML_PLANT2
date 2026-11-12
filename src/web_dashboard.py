@@ -533,7 +533,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     print(f"[web] 입력 소스: {source[1]}")
 
     import booth as _booth_mod
-    _booth[0] = _booth_mod.BoothTouch(clf.sample_rate)
+    _booth[0] = _booth_mod.Booth(clf.sample_rate)
     _farm[0] = _booth_mod.FarmPump()
     threading.Thread(target=_worker, args=(clf, source), daemon=True).start()
     threading.Thread(target=_env_worker, daemon=True).start()
@@ -658,8 +658,8 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return resp
 
     # ---- 부스 화면 ------------------------------------------------------
-    # /booth = 손 접촉 머신러닝 체험(2초 창, 기록·모델은 메모리에만), /farm = 스마트팜 전시(수분부족 판정 → 펌프).
-    # 관람객이 쓰는 화면이라 관리자 로그인을 요구하지 않는다(저장소의 자료·모델을 바꾸지 않는다).
+    # /booth = 머신러닝 체험(학교 이름 → 정상·자극 기록 → 스펙트로그램으로 학습 → 모델 골라 판정, 모델은 data/booth/),
+    # /farm = 스마트팜 전시(수분부족 판정 → 펌프). 관람객이 쓰는 화면이라 모델 지우기 말고는 관리자 로그인을 요구하지 않는다.
     def _booth_page(name):
         p = os.path.join(web_dir, name) if web_dir else None
         if not p or not os.path.isfile(p):
@@ -691,18 +691,25 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     def api_booth_action(action):
         body = request.get_json(silent=True) or {}
         b = _booth[0]
-        if action == "record":
-            ok, err = b.start_record(body.get("label"), float(body.get("seconds", 8)))
-        elif action == "train":
-            ok, err = b.train()
+        if action == "start":
+            ok, err = b.start(body.get("school"))
+        elif action == "record":
+            ok, err = b.record()
+        elif action == "cancel":
+            ok, err = b.cancel()
         elif action == "select":
-            ok, err = b.select(body.get("name"))
-        elif action == "reset":
-            b.reset(); ok, err = True, None
+            ok, err = b.select(body.get("id"))
+        elif action == "delete":
+            # 모델 지우기만 관리자 로그인을 요구한다(관람객이 남의 모델을 지우지 못하게).
+            if _admin_load().get("hash") and not _is_admin():
+                return jsonify({"ok": False, "error": "관리자 로그인이 필요합니다", "need_auth": True}), 401
+            ok, err = b.delete(body.get("id"))
         else:
             return jsonify({"ok": False, "error": "모르는 동작"}), 404
         d = _booth_status()
-        d["ok"], d["error"] = ok, err
+        d["ok"] = ok
+        if err:
+            d["error"] = err
         return jsonify(d)
 
     def _farm_status():

@@ -3,232 +3,186 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>손 접촉 머신러닝 체험</title>
-<script>try { const t = localStorage.getItem("boothTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
-<link rel="stylesheet" href="/static/booth.css">
+<title>머신러닝 체험</title>
+<!-- 디자인 없음(2026-11-12). 화면 구조와 동작만 있다. 화면은 section[data-screen] 하나씩만 보인다.
+     계산·진행 단계는 전부 서버(src/booth.py)가 쥐고, 여기는 /api/booth 의 phase 를 보고 그리기만 한다. -->
+<style>
+section[data-screen] { display: none; }
+section[data-screen].on { display: block; }
+canvas { display: block; width: 100%; max-width: 720px; }
+#sig { height: 160px; } #spec { height: 200px; }
+</style>
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <div class="brand">
-      <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V11"/><path d="M12 13C12 8 8 6 4 6c0 5 3 8 8 7z"/><path d="M12 11c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg></div>
-      <div><small>GREEN MIND LAB · 식물 번역기</small><h1>식물에 손을 올리면, 컴퓨터가 알아챌까요?</h1></div>
-    </div>
-    <ol class="steps" id="steps" aria-label="체험 순서">
-      <li><b>1</b>자료 모으기</li><li><b>2</b>학습</li><li><b>3</b>모델 고르기</li><li><b>4</b>판정 보기</li>
-    </ol>
-    <span class="chip" id="src"><i></i><span>연결 중</span></span>
-    <button class="iconbtn" id="theme" aria-label="밝은 화면 / 어두운 화면 바꾸기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg></button>
-  </header>
 
-  <main class="bento fit2">
-    <section class="card c7">
-      <h2>지금 식물에서 읽는 전압</h2>
-      <div class="chartbox"><canvas class="chart" id="chart" aria-label="최근 40초 전압 그래프"></canvas></div>
-      <div class="legend">
-        <span><i style="background:var(--text)"></i>전압 (mV)</span>
-        <span><i style="background:var(--off)"></i>손을 뗀 채 기록한 구간</span>
-        <span><i style="background:var(--on)"></i>손을 올린 채 기록한 구간</span>
-      </div>
-    </section>
+<p id="src"></p>
 
-    <section class="card c5 hero" id="hero" aria-live="polite">
-      <h2>컴퓨터의 판정</h2>
-      <div class="orb" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 11V4.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 11V6a1.5 1.5 0 0 1 3 0v7"/><path d="M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.6a6 6 0 0 1-4.6-2.2L4.3 14a1.6 1.6 0 0 1 2.4-2L8 13"/></svg></div>
-      <p class="verdict" id="verdict">아직 몰라요</p>
-      <div class="meter" aria-hidden="true"><i id="pbar"></i></div>
-      <p class="sub" id="pText">먼저 컴퓨터를 가르쳐 주세요.</p>
-    </section>
+<section data-screen="main">
+  <h1>식물 신호 머신러닝</h1>
+  <button id="goNew">머신러닝 학습해보기</button>
+  <p id="err"></p>
 
-    <section class="card c5 guide" id="guide">
-      <h2 id="guideTitle">순서 1 · 자료 모으기</h2>
-      <div class="idle">
-        <p class="big" id="big"></p>
-        <p class="sub" id="hint"></p>
-        <div class="row" id="main"></div>
-        <div class="row" id="more"></div>
-      </div>
-      <div class="count" aria-live="assertive">
-        <div class="ring"><svg viewBox="0 0 120 120"><circle class="t" cx="60" cy="60" r="52"/><circle class="p" id="ringP" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="0"/></svg><b id="ringN">8</b></div>
-        <div><p class="big" id="recBig"></p><p class="sub">끝날 때까지 그대로 있어 주세요.</p></div>
-      </div>
-      <div class="foot"><p class="tiny" id="recState"></p><p class="msg" id="msg" aria-live="polite"></p></div>
-    </section>
+  <h2>판정</h2>
+  <p>모델: <span id="selName">선택 안 함</span></p>
+  <p id="verdict">-</p>
+  <p id="probs"></p>
 
-    <section class="card c7">
-      <h2>세 가지 모델 · 눌러서 바꿔 보세요</h2>
-      <div class="models" id="models"></div>
-      <p class="tiny" id="trainInfo" style="margin-top:10px"></p>
-    </section>
+  <h2>전압</h2>
+  <canvas id="sig"></canvas>
+  <h2>스펙트로그램 (최근 2초, 0–62.5 Hz)</h2>
+  <canvas id="spec"></canvas>
 
-    <section class="card c12 slim">
-      <p class="note">이 모델이 알아채는 것은 식물의 반응이 아니라 <b>손이 닿았는지</b>입니다. 사람 몸에도 전기가 흐르기 때문에, 손이 닿는 순간 몸의 전압이 전극에 더해집니다.
-        정확도가 높게 나왔을 때 가장 단순한 <b>'문턱 하나'</b>와 견주어 보면, 모델이 무엇을 보고 맞혔는지 알 수 있습니다.</p>
-    </section>
-  </main>
-</div>
+  <h2>모델</h2>
+  <table id="models">
+    <thead><tr><th>학교</th><th>만든 시각</th><th>방식</th><th>평가</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<section data-screen="school">
+  <h1>학교 이름</h1>
+  <form id="schoolForm">
+    <input id="school" maxlength="30" autocomplete="off" required>
+    <button type="submit">다음</button>
+    <button type="button" class="cancel">취소</button>
+  </form>
+  <p id="schoolErr"></p>
+</section>
+
+<section data-screen="normal_ready">
+  <h1>정상 학습하기</h1>
+  <p><span class="school"></span></p>
+  <p>식물을 건드리지 않은 상태로 <span class="recSec"></span>초 기록합니다.</p>
+  <button class="rec">기록 시작</button>
+  <button class="cancel">취소</button>
+</section>
+
+<section data-screen="normal_rec">
+  <h1>정상 기록 중</h1>
+  <p class="left"></p>
+  <progress class="bar" max="1" value="0"></progress>
+</section>
+
+<section data-screen="stim_ready">
+  <h1>자극 학습하기</h1>
+  <p><span class="school"></span></p>
+  <p>식물에 손을 올린 상태로 <span class="recSec"></span>초 기록합니다.</p>
+  <button class="rec">기록 시작</button>
+  <button class="cancel">취소</button>
+</section>
+
+<section data-screen="stim_rec">
+  <h1>자극 기록 중</h1>
+  <p class="left"></p>
+  <progress class="bar" max="1" value="0"></progress>
+</section>
+
+<section data-screen="training">
+  <h1>모델 학습 중입니다</h1>
+</section>
 
 <script>
-/* 계산은 전부 서버(src/booth.py)가 한다. 이 화면은 /api/booth 가 준 값을 그대로 그린다. */
 const $ = id => document.getElementById(id);
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const ICON = {
-  off: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V11"/><path d="M12 13C12 8 8 6 4 6c0 5 3 8 8 7z"/><path d="M12 11c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg>',
-  on: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 11V4.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 11V6a1.5 1.5 0 0 1 3 0v7"/><path d="M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.6a6 6 0 0 1-4.6-2.2L4.3 14a1.6 1.6 0 0 1 2.4-2L8 13"/></svg>',
-  go: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
-  redo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5v5h5"/><path d="M5.5 15a7 7 0 1 0 1-7.5L4 10"/></svg>',
-};
-let last = null, busy = false, training = false, key = "";
+const all = (sel, fn) => document.querySelectorAll(sel).forEach(fn);
+let entering = false, last = null, busy = false;
 
-$("theme").onclick = () => {
-  const r = document.documentElement, t = r.dataset.theme === "light" ? "dark" : "light";
-  r.dataset.theme = t; try { localStorage.setItem("boothTheme", t); } catch (e) {}
-  if (last) draw(last);
-};
 async function call(path, body) {
   const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
   return r.json();
 }
 async function act(action, body) {
-  if (busy) return;
-  busy = true; $("msg").textContent = "";
-  if (action === "train") { training = true; key = ""; if (last) render(last); }
-  try {
-    const d = await call("/api/booth/" + action, body || {});
-    training = false;
-    if (!d.ok && d.error) $("msg").textContent = d.error;
-    key = ""; render(d);
-  } catch (e) { training = false; $("msg").textContent = "서버에 연결하지 못했습니다."; }
+  if (busy) return null;
+  busy = true;
+  let d = null;
+  try { d = await call("/api/booth/" + action, body || {}); render(d); } catch (e) {}
   busy = false;
-}
-const rec = label => act("record", {label, seconds: 8});
-function button(cls, icon, text, fn) {
-  const b = document.createElement("button"); b.className = "btn " + cls; b.innerHTML = ICON[icon] + "<span></span>";
-  b.lastChild.textContent = text; b.onclick = fn; return b;
+  return d;
 }
 
-function draw(d) {
-  const c = $("chart"), dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
-  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
-  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
-  const padL = 46, padT = 26, padB = 26, w = W - padL - 6, h = H - padT - padB, y = d.signal_mv, span = d.plot_sec;
-  const x = t => padL + (t + span) / span * w;                       // t: 지금 = 0, 과거 = 음수(초)
-  const band = (s, col, name) => {
-    const a = Math.max(-span, s.t[0]), b = Math.min(0, s.t[1]); if (b <= a) return;
-    g.globalAlpha = .16; g.fillStyle = col; g.beginPath(); g.roundRect(x(a), padT, x(b) - x(a), h, 10); g.fill(); g.globalAlpha = 1;
-    g.fillStyle = col; g.font = "700 13px system-ui"; g.textAlign = "center";
-    if (x(b) - x(a) > 44) g.fillText(name, (x(a) + x(b)) / 2, padT - 8);
-  };
-  d.segments.forEach(s => band(s, css(s.label === "접촉" ? "--on" : "--off"), s.label === "접촉" ? "손 올림" : "손 뗌"));
-  if (d.recording) band(d.recording, css(d.recording.label === "접촉" ? "--on" : "--off"), "기록 중");
-  let lo = 0, hi = 1;
-  if (y.length) { lo = Math.min(...y); hi = Math.max(...y); const m = Math.max(1.5, (hi - lo) * .18); lo -= m; hi += m; }
-  g.strokeStyle = css("--grid"); g.fillStyle = css("--text-3"); g.font = "12px system-ui"; g.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const v = lo + (hi - lo) * i / 4, yy = padT + h - h * i / 4;
-    g.beginPath(); g.moveTo(padL, yy); g.lineTo(padL + w, yy); g.stroke();
-    g.textAlign = "right"; g.fillText(v.toFixed(0), padL - 8, yy + 4);
-  }
-  g.textAlign = "center";
-  for (let t = -span; t <= 0; t += 10) g.fillText(t === 0 ? "지금" : -t + "초 전", Math.min(x(t), W - 16), H - 6);
-  if (y.length > 1) {
-    const dt = 1 / d.signal_hz, pts = y.map((v, i) => [x(-(y.length - 1 - i) * dt), padT + h - (v - lo) / (hi - lo) * h]);
-    const line = css("--text");
-    const grad = g.createLinearGradient(0, padT, 0, padT + h); grad.addColorStop(0, line); grad.addColorStop(1, "transparent");
-    g.globalAlpha = .10; g.fillStyle = grad; g.beginPath(); g.moveTo(pts[0][0], padT + h);
-    pts.forEach(p => g.lineTo(p[0], p[1])); g.lineTo(pts[pts.length - 1][0], padT + h); g.fill(); g.globalAlpha = 1;
-    g.strokeStyle = line; g.lineWidth = 2.4; g.lineJoin = "round"; g.beginPath();
-    pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
-    const e = pts[pts.length - 1]; g.fillStyle = line; g.beginPath(); g.arc(e[0], e[1], 5, 0, 7); g.fill();
-  }
+$("goNew").onclick = () => { entering = true; $("school").value = ""; $("schoolErr").textContent = ""; show(); $("school").focus(); };
+$("schoolForm").onsubmit = async ev => {
+  ev.preventDefault();
+  const d = await act("start", {school: $("school").value});
+  if (d && d.ok) entering = false; else if (d) $("schoolErr").textContent = d.error || "";
+};
+all(".rec", b => b.onclick = () => act("record"));
+all(".cancel", b => b.onclick = () => { entering = false; if (last && last.phase !== "main") act("cancel"); else show(); });
+
+function show() {
+  const name = last && last.phase !== "main" ? last.phase : (entering ? "school" : "main");
+  all("section[data-screen]", s => s.classList.toggle("on", s.dataset.screen === name));
 }
 
-function guide(d) {
-  const nOff = d.counts["비접촉"], nOn = d.counts["접촉"], has = d.models.length > 0, r = d.recording;
-  const step = has ? (d.pred ? 4 : 3) : (nOff && nOn ? 2 : 1);
-  [...$("steps").children].forEach((li, i) => { li.className = i + 1 < step ? "done" : i + 1 === step ? "now" : ""; });
-  const g = $("guide"); g.classList.toggle("rec", !!r);
-  if (r) {
-    const on = r.label === "접촉";
-    g.style.setProperty("--c", css(on ? "--on" : "--off"));
-    $("ringN").textContent = Math.ceil(r.left);
-    $("ringP").style.strokeDashoffset = (326.7 * (1 - r.left / r.total)).toFixed(1);
-    $("recBig").innerHTML = on ? "잎에 손을 <em class='on'>올린 채로</em>" : "손을 <em>뗀 채로</em>";
-    $("guideTitle").textContent = "기록 중";
-  }
-  const k = [step, nOff, nOn, has, !!r, training].join();      // 바뀔 때만 버튼을 다시 만든다(누르는 중에 사라지지 않게)
-  if (k === key) return; key = k;
-  const main = $("main"), more = $("more"); main.innerHTML = ""; more.innerHTML = "";
-  if (training) {
-    $("guideTitle").textContent = "순서 2 · 학습"; $("big").textContent = "배우는 중…"; $("hint").textContent = "2초씩 잘라 세 가지 모델을 학습하고 있어요.";
-  } else if (!nOff) {
-    $("guideTitle").textContent = "순서 1 · 자료 모으기"; $("big").innerHTML = "먼저, 손을 <em>뗀</em> 상태를 알려 주세요";
-    $("hint").textContent = "식물에서 손을 떼고 버튼을 누르면 8초 동안 기록합니다.";
-    main.append(button("cta", "off", "손 떼고 기록하기", () => rec("비접촉")));
-  } else if (!nOn) {
-    $("guideTitle").textContent = "순서 1 · 자료 모으기"; $("big").innerHTML = "이번엔 잎에 손을 <em class='on'>올려</em> 주세요";
-    $("hint").textContent = "잎에 손을 살짝 올린 채 버튼을 누르면 8초 동안 기록합니다.";
-    main.append(button("cta", "on", "손 올리고 기록하기", () => rec("접촉")));
-  } else if (!has) {
-    $("guideTitle").textContent = "순서 2 · 학습"; $("big").textContent = "이제 컴퓨터를 가르쳐 볼까요?";
-    $("hint").textContent = "모은 자료로 세 가지 모델을 한 번에 학습합니다. 몇 초면 끝나요.";
-    main.append(button("cta", "go", "학습하기", () => act("train")));
-  } else {
-    $("guideTitle").textContent = "순서 3 · 4 · 고르고 확인하기"; $("big").innerHTML = "손을 <em class='on'>올렸다 떼</em> 보세요";
-    $("hint").textContent = "모델을 바꾸면 판정이 어떻게 달라지는지도 볼 수 있어요.";
-    main.append(button("cta", "redo", "처음부터 다시", () => act("reset")));
-  }
-  if (!training && nOff && nOn) {
-    more.append(button("off", "off", "손 뗌 추가", () => rec("비접촉")), button("on", "on", "손 올림 추가", () => rec("접촉")));
-    if (has) more.append(button("", "go", "다시 학습", () => act("train")));
-  } else if (!training && (nOff || nOn)) {
-    more.append(button("ghost", "redo", "처음부터 다시", () => act("reset")));
+function drawSignal(d) {
+  const c = $("sig"), W = c.clientWidth, H = c.clientHeight;
+  if (!W) return;
+  if (c.width !== W) { c.width = W; c.height = H; }
+  const g = c.getContext("2d"), y = d.signal_mv;
+  g.clearRect(0, 0, W, H);
+  if (y.length < 2) return;
+  let lo = Math.min(...y), hi = Math.max(...y); const m = Math.max(1, (hi - lo) * .1); lo -= m; hi += m;
+  const n = Math.round(d.plot_sec * d.signal_hz);
+  g.beginPath();
+  y.forEach((v, i) => { const x = (n - y.length + i) / (n - 1) * W, yy = H - (v - lo) / (hi - lo) * H; i ? g.lineTo(x, yy) : g.moveTo(x, yy); });
+  g.stroke();
+  g.fillText(hi.toFixed(0) + " mV", 2, 10); g.fillText(lo.toFixed(0) + " mV", 2, H - 2);
+}
+function drawSpec(d) {
+  const c = $("spec"), W = c.clientWidth, H = c.clientHeight;
+  if (!W) return;
+  if (c.width !== W) { c.width = W; c.height = H; }
+  const g = c.getContext("2d"); g.clearRect(0, 0, W, H);
+  if (!d.spec) return;
+  const z = d.spec.db, nf = z.length, nt = z[0].length;
+  let lo = Infinity, hi = -Infinity;
+  z.forEach(r => r.forEach(v => { if (v < lo) lo = v; if (v > hi) hi = v; }));
+  const cw = W / nt, ch = H / nf;
+  for (let f = 0; f < nf; f++) for (let t = 0; t < nt; t++) {
+    const k = hi > lo ? (z[f][t] - lo) / (hi - lo) : 0;          // 0 = 가장 약함, 1 = 가장 셈
+    g.fillStyle = "hsl(" + (240 - 240 * k) + ",90%," + (20 + 40 * k) + "%)";
+    g.fillRect(t * cw, H - (f + 1) * ch, Math.ceil(cw), Math.ceil(ch));   // 아래가 0 Hz
   }
 }
 
 function render(d) {
   last = d;
-  const chip = $("src");
-  chip.className = "chip " + (d.paused ? "bad" : d.source_kind === "hardware" ? "live" : "sim");
-  chip.lastChild.textContent = d.paused ? "수집 작업 중이라 잠시 멈춤" : d.source_kind === "hardware" ? "센서 연결됨" : "연습용 가짜 신호";
-  draw(d); guide(d);
-  $("recState").textContent = "지금까지 기록 · 손 뗌 " + d.counts["비접촉"] + "번, 손 올림 " + d.counts["접촉"] + "번";
-  $("trainInfo").textContent = d.train ? "학습에 쓴 2초 조각 " + d.train.n_train + "개 · 정확도는 학습에 쓰지 않은 조각 " + d.train.n_test + "개로 쟀습니다 (" + d.train.split.join(", ") + ")" : "";
-  const box = $("models"), mk = d.models.map(m => m.name + m.correct + m.total).join() + d.selected;
-  if (box.dataset.k !== mk) {
-    box.dataset.k = mk; box.innerHTML = "";
-    if (!d.models.length) { box.innerHTML = '<div class="empty">학습을 마치면 여기에 모델 세 개가 나타납니다.<br>문턱 하나 · SVM · 랜덤 포레스트</div>'; }
+  $("src").textContent = d.paused ? "수집 작업 중" : d.source_kind === "hardware" ? "센서 연결됨" : "센서 없음(" + (d.source || "시뮬레이션") + ")";
+  show();
+  all(".school", e => e.textContent = d.school || "");
+  all(".recSec", e => e.textContent = d.rec_sec);
+  if (d.recording) {
+    all("section.on .left", e => e.textContent = Math.ceil(d.recording.left) + "초 남음");
+    all("section.on .bar", e => e.value = 1 - d.recording.left / d.recording.total);
+  }
+  if (d.phase !== "main" || entering) return;
+  $("err").textContent = d.error || "";
+  const sel = d.models.find(m => m.id === d.selected);
+  $("selName").textContent = sel ? sel.school : "선택 안 함";
+  $("verdict").textContent = d.pred ? d.pred.label : "-";
+  $("probs").textContent = d.pred ? d.labels.map(l => l + " " + Math.round((d.pred.probs[l] || 0) * 100) + "%").join(" · ") : "";
+  drawSignal(d); drawSpec(d);
+  const tb = $("models").tBodies[0], key = d.models.map(m => m.id).join() + "|" + d.selected;
+  if (tb.dataset.key !== key) {
+    tb.dataset.key = key; tb.innerHTML = "";
     d.models.forEach(m => {
-      const b = document.createElement("button"); b.className = "model"; b.setAttribute("aria-pressed", m.name === d.selected);
-      b.innerHTML = '<i class="tag">사용 중</i><b></b><div class="pct"></div><div class="bar"><i></i></div><span></span><span></span>';
-      const pct = Math.round(m.correct / m.total * 100), pl = m.per_label;
-      b.children[1].textContent = m.name;
-      b.children[2].innerHTML = pct + "%<small></small>"; b.children[2].lastChild.textContent = m.total + "개 중 " + m.correct + "개";
-      b.children[3].firstChild.style.width = pct + "%";
-      b.children[4].textContent = "손 뗌 " + pl["비접촉"][0] + "/" + pl["비접촉"][1] + " · 손 올림 " + pl["접촉"][0] + "/" + pl["접촉"][1];
-      b.children[5].textContent = m.rule ? "기준 하나: " + m.rule : "특징 6개를 함께 봅니다";
-      b.onclick = () => act("select", {name: m.name});
-      box.append(b);
+      const tr = tb.insertRow();
+      tr.insertCell().textContent = m.school;
+      tr.insertCell().textContent = new Date(m.created * 1000).toLocaleTimeString("ko-KR", {hour: "2-digit", minute: "2-digit"});
+      tr.insertCell().textContent = m.algo;
+      tr.insertCell().textContent = m.correct + "/" + m.total;
+      const b = document.createElement("button");
+      b.textContent = m.id === d.selected ? "선택됨" : "선택"; b.disabled = m.id === d.selected;
+      b.onclick = () => act("select", {id: m.id});
+      tr.insertCell().append(b);
     });
   }
-  const hero = $("hero"), p = d.pred;
-  if (!p) {
-    hero.className = "card c5 hero"; $("verdict").textContent = d.models.length ? "준비 중…" : "아직 몰라요"; $("pbar").style.width = "0";
-    $("pText").textContent = d.models.length ? "잠시만 기다려 주세요." : "먼저 컴퓨터를 가르쳐 주세요.";
-  } else {
-    const on = p.label === "접촉", pt = p.probs["접촉"] || 0;
-    hero.className = "card c5 hero " + (on ? "on" : "off");
-    $("verdict").textContent = on ? "손이 닿았어요!" : "손이 떨어져 있어요";
-    $("pbar").style.width = (pt * 100).toFixed(0) + "%";
-    $("pText").textContent = "'" + d.selected + "' 모델 · 닿았을 가능성 " + (pt * 100).toFixed(0) + "% · 최근 " + d.window_sec + "초를 보고 판정";
-  }
 }
+
 async function tick() {
-  if (!busy) { try { render(await call("/api/booth")); } catch (e) { const c = $("src"); c.className = "chip bad"; c.lastChild.textContent = "서버 연결 끊김"; } }
+  if (!busy) { try { render(await call("/api/booth")); } catch (e) { $("src").textContent = "서버 연결 끊김"; } }
   setTimeout(tick, 300);
 }
 tick();
-window.addEventListener("resize", () => last && draw(last));
 </script>
 </body>
 </html>
