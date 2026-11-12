@@ -19,3 +19,6 @@ data/bench/stage2_electrode_2h.csv
 data/plant/*_INVALID*.csv
 data/plant/tap_session*.csv
 data/touch/
+
+# 부스 체험에서 만든 모델(src/booth.py)
+data/booth/

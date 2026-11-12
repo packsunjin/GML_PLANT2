@@ -3,151 +3,72 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>식물 전기신호 스마트팜</title>
-<script>try { const t = localStorage.getItem("boothTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
-<link rel="stylesheet" href="/static/booth.css">
+<title>스마트팜 전시</title>
+<!-- 디자인 없음(2026-11-12). 판정·펌프 판단은 서버(src/booth.py FarmPump)가 하고, 여기는 /api/farm 값을 그대로 보인다. -->
+<style>
+canvas { display: block; width: 100%; max-width: 720px; height: 160px; }
+</style>
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <div class="brand">
-      <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V11"/><path d="M12 13C12 8 8 6 4 6c0 5 3 8 8 7z"/><path d="M12 11c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg></div>
-      <div><small>GREEN MIND LAB · 식물 번역기</small><h1>식물이 목마르다고 하면, 물을 줍니다</h1></div>
-    </div>
-    <span class="chip" id="env" hidden><i style="background:var(--water)"></i><span></span></span>
-    <span class="chip" id="src"><i></i><span>연결 중</span></span>
-    <button class="iconbtn" id="theme" aria-label="밝은 화면 / 어두운 화면 바꾸기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg></button>
-  </header>
+<p id="src"></p>
+<h1>식물 전기신호 스마트팜</h1>
 
-  <main class="bento fit3">
-    <section class="card c12">
-      <h2>이렇게 움직입니다</h2>
-      <div class="flow" id="flow">
-        <div class="node act" style="--c:var(--off)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V8"/><path d="M12 12c0-4-3-6-7-6 0 4 2 7 7 6z"/><path d="M12 9c0-3 3-6 7-6 0 4-2 7-7 6z"/><path d="M4 21h16"/></svg><div>줄기의 전극<small>은선 두 가닥</small></div></div>
-        <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
-        <div class="node act" style="--c:var(--off)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 3-9 2 3h5"/></svg><div>전압 측정<small>1초에 250번</small></div></div>
-        <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
-        <div class="node" id="nModel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9.5 2v4M14.5 2v4M9.5 18v4M14.5 18v4M2 9.5h4M2 14.5h4M18 9.5h4M18 14.5h4"/></svg><div>머신러닝 판정<small id="nModelT">모델 준비 전</small></div></div>
-        <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
-        <div class="node" id="nPump" style="--c:var(--water)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.500 6-11 6-11z"/></svg><div>펌프로 물 주기<small id="nPumpT">'수분부족'일 때만</small></div></div>
-      </div>
-    </section>
+<h2>전압</h2>
+<canvas id="sig"></canvas>
+<p id="env"></p>
 
-    <section class="card c7">
-      <h2>지금 식물에서 읽는 전압</h2>
-      <div class="chartbox"><canvas class="chart" id="chart" aria-label="최근 60초 전압 그래프"></canvas></div>
-    </section>
+<h2>판정</h2>
+<p id="state">-</p>
+<p id="stateText"></p>
+<progress id="hold" max="1" value="0"></progress>
 
-    <section class="card c5 hero" id="hero" aria-live="polite">
-      <h2>식물의 상태 · 모델의 판정</h2>
-      <div class="orb" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V11"/><path d="M12 13C12 8 8 6 4 6c0 5 3 8 8 7z"/><path d="M12 11c0-4 3-7 8-7 0 5-3 8-8 7z"/></svg></div>
-      <p class="verdict" id="state">판정 없음</p>
-      <div class="meter" aria-hidden="true"><i id="hold"></i></div>
-      <p class="sub" id="stateText"></p>
-    </section>
-
-    <section class="card c7 pumpbox" id="pumpbox">
-      <div class="tank" aria-hidden="true"><i class="drop"></i><i class="drop"></i><i class="drop"></i><div class="w"></div></div>
-      <div class="txt">
-        <h2 style="margin:0;font-size:.86rem;letter-spacing:.12em;color:var(--text-3);font-weight:800">펌프</h2>
-        <p class="pumpstate" id="pump">쉬는 중</p>
-        <p class="sub" id="pumpText"></p>
-        <p class="note" id="notice" hidden><b>펌프가 아직 연결되지 않았습니다.</b> 지금은 화면에만 표시하고 실제 물은 나오지 않습니다.</p>
-      </div>
-    </section>
-
-    <section class="card c5" style="gap:16px">
-      <h2>기록</h2>
-      <div class="stats">
-        <div class="stat"><span class="tiny">지금까지 물 준 횟수</span><b id="runs">0</b></div>
-        <div class="stat"><span class="tiny">다음 물 주기까지</span><b id="rest">—</b></div>
-        <div class="stat"><span class="tiny">쓰는 모델</span><b id="model" style="font-size:1.3rem">—</b></div>
-        <div class="stat"><span class="tiny">판정에 보는 길이</span><b id="win" style="font-size:1.3rem">—</b></div>
-      </div>
-      <p class="tiny" id="rule"></p>
-      <button class="btn" id="test">시험해 보기 · 15초 동안 '수분부족'으로 가정</button>
-    </section>
-  </main>
-</div>
+<h2>펌프</h2>
+<p id="pump">-</p>
+<p id="pumpText"></p>
+<p id="notice"></p>
+<button id="test">시험 (15초 동안 수분부족으로 가정)</button>
 
 <script>
-/* 판정·펌프 판단은 전부 서버가 한다(src/booth.py FarmPump). 이 화면은 /api/farm 값을 그대로 보인다. */
 const $ = id => document.getElementById(id);
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const CLS = {"정상": "off", "자극": "on", "수분부족": "water"};
 let buf = [], lastT = 0, N = 600;
 
-$("theme").onclick = () => {
-  const r = document.documentElement, t = r.dataset.theme === "light" ? "dark" : "light";
-  r.dataset.theme = t; try { localStorage.setItem("boothTheme", t); } catch (e) {}
-  draw();
-};
 function draw() {
-  const c = $("chart"), dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
-  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
-  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
-  const padL = 46, padT = 12, padB = 26, w = W - padL - 6, h = H - padT - padB, y = buf;
-  let lo = 0, hi = 1;
-  if (y.length) { lo = Math.min(...y); hi = Math.max(...y); const m = Math.max(1.5, (hi - lo) * .18); lo -= m; hi += m; }
-  g.strokeStyle = css("--grid"); g.fillStyle = css("--text-3"); g.font = "12px system-ui"; g.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const v = lo + (hi - lo) * i / 4, yy = padT + h - h * i / 4;
-    g.beginPath(); g.moveTo(padL, yy); g.lineTo(padL + w, yy); g.stroke(); g.textAlign = "right"; g.fillText(v.toFixed(0), padL - 8, yy + 4);
-  }
-  g.textAlign = "center";
-  for (let t = 60; t >= 0; t -= 15) g.fillText(t ? t + "초 전" : "지금", Math.min(padL + (60 - t) / 60 * w, W - 16), H - 6);
-  g.textAlign = "left"; g.fillText("mV", 4, padT + 4);
-  if (y.length > 1) {
-    const x0 = N - y.length, pts = y.map((v, i) => [padL + (x0 + i) / (N - 1) * w, padT + h - (v - lo) / (hi - lo) * h]);
-    const line = css("--text"), grad = g.createLinearGradient(0, padT, 0, padT + h); grad.addColorStop(0, line); grad.addColorStop(1, "transparent");
-    g.globalAlpha = .10; g.fillStyle = grad; g.beginPath(); g.moveTo(pts[0][0], padT + h);
-    pts.forEach(p => g.lineTo(p[0], p[1])); g.lineTo(pts[pts.length - 1][0], padT + h); g.fill(); g.globalAlpha = 1;
-    g.strokeStyle = line; g.lineWidth = 2.4; g.lineJoin = "round"; g.beginPath();
-    pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
-    const e = pts[pts.length - 1]; g.fillStyle = line; g.beginPath(); g.arc(e[0], e[1], 5, 0, 7); g.fill();
-  }
+  const c = $("sig"), W = c.clientWidth, H = c.clientHeight;
+  if (!W) return;
+  if (c.width !== W) { c.width = W; c.height = H; }
+  const g = c.getContext("2d"); g.clearRect(0, 0, W, H);
+  if (buf.length < 2) return;
+  let lo = Math.min(...buf), hi = Math.max(...buf); const m = Math.max(1, (hi - lo) * .1); lo -= m; hi += m;
+  g.beginPath();
+  buf.forEach((v, i) => { const x = (N - buf.length + i) / (N - 1) * W, y = H - (v - lo) / (hi - lo) * H; i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  g.stroke();
+  g.fillText(hi.toFixed(0) + " mV", 2, 10); g.fillText(lo.toFixed(0) + " mV", 2, H - 2);
 }
 function render(d) {
-  const chip = $("src"); chip.className = "chip " + (d.source_kind === "hardware" ? "live" : "sim");
-  chip.lastChild.textContent = d.source_kind === "hardware" ? "센서 연결됨" : "연습용 가짜 신호";
-  const e = d.env, ec = $("env"); ec.hidden = !(e && e.temp_c != null);
-  if (!ec.hidden) ec.lastChild.textContent = e.temp_c + " °C · 습도 " + e.humidity_pct + " %";
-  /* 전압: 서버가 준 0.1초 평균을, 지난 폴링 뒤 흐른 시간만큼만 이어 붙인다. */
+  $("src").textContent = d.source_kind === "hardware" ? "센서 연결됨" : "센서 없음(" + (d.source || "시뮬레이션") + ")";
   const now = performance.now(), hz = d.signal_hz || 10; N = Math.round(60 * hz);
-  if (d.signal && d.signal.length) {
+  if (d.signal && d.signal.length) {       // 서버가 준 0.1초 평균을 지난 폴링 뒤 흐른 시간만큼만 이어 붙인다
     const n = lastT ? Math.min(d.signal.length, Math.max(1, Math.round((now - lastT) / 1000 * hz))) : d.signal.length;
     buf = buf.concat(d.signal.slice(-n).map(v => v * 1000)).slice(-N);
   }
   lastT = now; draw();
-  const judged = d.state && d.state !== "판정 없음", st = d.testing ? d.target : (judged ? d.state : null);
-  const hero = $("hero"); hero.className = "card c5 hero " + (CLS[st] || "") + (d.pump_on ? " pump" : "");
-  $("state").textContent = st === "수분부족" ? "목이 말라요" : st === "정상" ? "괜찮아요" : st || "판정 없음";
-  $("stateText").textContent = d.testing ? "시험 중 · 실제 판정이 아니라 '수분부족'으로 가정한 것입니다 (" + Math.ceil(d.test_left) + "초 남음)"
-    : judged ? "판정 '" + d.state + "'" + (d.proba != null ? " · 확신 " + (d.proba * 100).toFixed(0) + "%" : "")
-    : (d.worker_error || "아직 판정이 없습니다.");
-  $("hold").style.width = Math.min(100, d.held_sec / d.hold_sec * 100).toFixed(0) + "%";
-  const nm = $("nModel"); nm.className = "node" + (st ? " act" : ""); nm.style.setProperty("--c", css("--" + (CLS[st] || "off")));
-  $("nModelT").textContent = st ? "지금 '" + st + "'" : "모델 준비 전";
-  $("nPump").className = "node" + (d.pump_on ? " act" : ""); $("nPumpT").textContent = d.pump_on ? "물 주는 중" : "'수분부족'일 때만";
-  $("pumpbox").classList.toggle("pumping", d.pump_on);
-  $("pump").textContent = d.pump_on ? "물 주는 중" : "쉬는 중";
-  $("pumpText").textContent = d.pump_on ? Math.ceil(d.pump_left) + "초 뒤에 멈춥니다."
-    : d.held_sec > 0 ? "'수분부족'이 " + d.held_sec.toFixed(0) + "초째 이어지고 있어요. " + d.hold_sec + "초가 되면 물을 줍니다."
-    : "'수분부족' 판정이 " + d.hold_sec + "초 이어지면 물을 줍니다.";
-  $("notice").hidden = !!d.connected;
-  $("runs").textContent = d.runs + "번";
-  $("rest").textContent = d.pump_on ? "주는 중" : d.rest_left > 0 ? Math.ceil(d.rest_left) + "초" : "언제든";
-  $("model").textContent = judged ? d.model : "아직 없음"; $("win").textContent = d.window_sec + "초";
-  $("rule").textContent = "한 번에 " + d.run_sec + "초 동안 물을 주고, 그 뒤 " + d.rest_sec + "초는 쉽니다(물을 너무 많이 주지 않으려고).";
+  const e = d.env;
+  $("env").textContent = e && e.temp_c != null ? e.temp_c + " °C, 습도 " + e.humidity_pct + " %" : "";
+  $("state").textContent = d.testing ? d.target + " (시험)" : (d.state || "판정 없음");
+  $("stateText").textContent = d.testing ? "시험 " + Math.ceil(d.test_left) + "초 남음"
+    : d.state && d.state !== "판정 없음" ? "모델 " + d.model + (d.proba != null ? ", " + Math.round(d.proba * 100) + "%" : "") : (d.worker_error || "");
+  $("hold").value = Math.min(1, d.held_sec / d.hold_sec);
+  $("pump").textContent = d.pump_on ? "켜짐 (" + Math.ceil(d.pump_left) + "초 남음)" : "꺼짐";
+  $("pumpText").textContent = "수분부족 " + d.hold_sec + "초 → 펌프 " + d.run_sec + "초 → 쉼 " + d.rest_sec + "초. 지금까지 " + d.runs + "번"
+    + (d.rest_left > 0 ? ", 쉬는 중 " + Math.ceil(d.rest_left) + "초" : "");
+  $("notice").textContent = d.connected ? "" : "펌프 연결 안 됨 (화면 표시만)";
 }
 $("test").onclick = async () => { try { render(await (await fetch("/api/farm/test", {method: "POST"})).json()); } catch (e) {} };
 async function tick() {
-  try { render(await (await fetch("/api/farm")).json()); }
-  catch (e) { const c = $("src"); c.className = "chip bad"; c.lastChild.textContent = "서버 연결 끊김"; }
+  try { render(await (await fetch("/api/farm")).json()); } catch (e) { $("src").textContent = "서버 연결 끊김"; }
   setTimeout(tick, 500);
 }
 tick();
-window.addEventListener("resize", draw);
 </script>
 </body>
 </html>
