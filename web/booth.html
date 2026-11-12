@@ -1433,6 +1433,8 @@ section[data-screen="done"] {
 .cert-footer-row { flex-direction: column; gap: 20px; }
 .btn-result-done { flex: none; width: 520px; }
 .radar-dot { margin-right: 6px; }
+.canvas-frame { padding: 0; background: #ffffff; border: none; border-radius: 0; }
+.spec-gradient-bar { background: linear-gradient(90deg, #440154, #414487, #2a788e, #22a884, #7ad151, #fde725); border-radius: 2px; }
 .admin-msg { min-height: 32px; margin: 16px 0; font-size: 20px; font-weight: 800; color: #b91c1c; }
 </style>
 </head>
@@ -1475,9 +1477,7 @@ section[data-screen="done"] {
         </div>
       </div>
       <div class="canvas-frame idle-canvas-box" data-plot="sig">
-        <div class="axis-y"><span class="y-hi"></span><span class="y-mid"></span><span class="y-lo"></span></div>
         <div class="canvas-inner"><canvas id="idleSig"></canvas></div>
-        <div class="axis-x"><span>-30초</span><span>-20초</span><span>-10초</span><span>현재</span></div>
       </div>
     </div>
     <div class="attract-call-to-action">
@@ -1505,9 +1505,7 @@ section[data-screen="done"] {
           <span class="panel-tag bio-tag">줄기 전극 미세전압</span>
         </div>
         <div class="canvas-frame" data-plot="sig">
-          <div class="axis-y"><span class="y-hi"></span><span class="y-mid"></span><span class="y-lo"></span></div>
           <div class="canvas-inner"><canvas id="sig"></canvas></div>
-          <div class="axis-x"><span>-30초</span><span>-20초</span><span>-10초</span><span>현재</span></div>
         </div>
       </div>
       <div class="panel-box graph-panel">
@@ -1517,15 +1515,13 @@ section[data-screen="done"] {
             실시간 스펙트로그램 (최근 2초, 0–62.5 Hz)
           </span>
           <div class="spec-legend">
-            <span class="legend-text">주파수 세기(dB)</span>
+            <span class="legend-text">약</span>
             <div class="spec-gradient-bar"></div>
-            <span class="legend-text">약 → 강</span>
+            <span class="legend-text">강 (dB)</span>
           </div>
         </div>
         <div class="canvas-frame">
-          <div class="axis-y"><span>62.5 Hz</span><span>31.2 Hz</span><span>0 Hz</span></div>
           <div class="canvas-inner"><canvas id="spec"></canvas></div>
-          <div class="axis-x"><span>-2.0초</span><span>-1.5초</span><span>-1.0초</span><span>-0.5초</span><span>0초</span></div>
         </div>
       </div>
     </div>
@@ -1666,9 +1662,7 @@ section[data-screen="done"] {
           <span class="panel-tag bio-tag">기록 진행 중</span>
         </div>
         <div class="canvas-frame" data-plot="sig">
-          <div class="axis-y"><span class="y-hi"></span><span class="y-mid"></span><span class="y-lo"></span></div>
           <div class="canvas-inner"><canvas class="sigC"></canvas></div>
-          <div class="axis-x"><span>-30초</span><span>-15초</span><span>현재</span></div>
         </div>
       </div>
       <div class="panel-box">
@@ -1677,9 +1671,7 @@ section[data-screen="done"] {
           <span class="panel-tag">0–62.5 Hz</span>
         </div>
         <div class="canvas-frame">
-          <div class="axis-y"><span>62.5 Hz</span><span>31.2 Hz</span><span>0 Hz</span></div>
           <div class="canvas-inner"><canvas class="specC"></canvas></div>
-          <div class="axis-x"><span>-2초</span><span>-1초</span><span>0초</span></div>
         </div>
       </div>
     </div>
@@ -1735,9 +1727,7 @@ section[data-screen="done"] {
           <span class="panel-tag stim-tag">자극 파형 수집 중</span>
         </div>
         <div class="canvas-frame" data-plot="sig">
-          <div class="axis-y"><span class="y-hi"></span><span class="y-mid"></span><span class="y-lo"></span></div>
           <div class="canvas-inner"><canvas class="sigC"></canvas></div>
-          <div class="axis-x"><span>-30초</span><span>-15초</span><span>현재</span></div>
         </div>
       </div>
       <div class="panel-box">
@@ -1746,9 +1736,7 @@ section[data-screen="done"] {
           <span class="panel-tag">0–62.5 Hz</span>
         </div>
         <div class="canvas-frame">
-          <div class="axis-y"><span>62.5 Hz</span><span>31.2 Hz</span><span>0 Hz</span></div>
           <div class="canvas-inner"><canvas class="specC"></canvas></div>
-          <div class="axis-x"><span>-2초</span><span>-1초</span><span>0초</span></div>
         </div>
       </div>
     </div>
@@ -1904,48 +1892,108 @@ all("#virtualKbd .kbd-row", row => row.dataset.keys.split(" ").forEach(k => {
   row.append(b);
 }));
 
-/* ── 그래프 ── */
+/* ── 그래프: 논문 그림처럼(matplotlib 기본 모양) — 네모 테두리, 바깥쪽 눈금, 축 이름.
+   스펙트로그램은 /live 와 같은 표현: viridis, 색 범위는 0 Hz 줄을 뺀 값의 5–99.5 백분위, 칸은 보간 없이. ── */
+const INK = "#111111", GRID = "#e6e6e6", TRACE = "#1f77b4", FONT = "15px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
 function size(c) {
   const W = c.clientWidth, H = c.clientHeight;
   if (!W || !H) return null;
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
   return [W, H];
 }
+function niceTicks(lo, hi, n) {
+  const span = hi - lo || 1, raw = span / n;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || raw;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+const decimals = (lo, hi) => { const r = hi - lo; return r < 0.5 ? 3 : r < 5 ? 2 : r < 50 ? 1 : 0; };
+// 축·눈금·축 이름. 그림 영역 {l,t,pw,ph} 를 돌려준다. xs/ys = [[값, 위치비율]], ylab/xlab = 축 이름
+function axes(g, W, H, yT, xT, ylab, xlab) {
+  const P = {l: 78, r: 14, t: 12, b: 52}, pw = W - P.l - P.r, ph = H - P.t - P.b;
+  g.font = FONT; g.fillStyle = INK; g.strokeStyle = INK; g.lineWidth = 1;
+  g.textAlign = "right"; g.textBaseline = "middle";
+  yT.forEach(([lab, u]) => {
+    const y = Math.round(P.t + (1 - u) * ph) + 0.5;
+    g.beginPath(); g.moveTo(P.l, y); g.lineTo(P.l - 6, y); g.stroke();
+    g.fillText(lab, P.l - 10, y);
+  });
+  g.textAlign = "center"; g.textBaseline = "top";
+  xT.forEach(([lab, u]) => {
+    const x = Math.round(P.l + u * pw) + 0.5;
+    g.beginPath(); g.moveTo(x, P.t + ph); g.lineTo(x, P.t + ph + 6); g.stroke();
+    g.fillText(lab, x, P.t + ph + 10);
+  });
+  g.fillText(xlab, P.l + pw / 2, P.t + ph + 30);
+  g.save(); g.translate(16, P.t + ph / 2); g.rotate(-Math.PI / 2);
+  g.textBaseline = "middle"; g.fillText(ylab, 0, 0); g.restore();
+  return {l: P.l, t: P.t, pw, ph};
+}
+function frame(g, A) { g.strokeStyle = INK; g.lineWidth = 1; g.strokeRect(A.l + 0.5, A.t + 0.5, A.pw - 1, A.ph - 1); }
+
 function drawSignal(c, d) {
   const s = size(c); if (!s) return;
   const [W, H] = s, g = c.getContext("2d"), y = d.signal_mv;
   g.clearRect(0, 0, W, H);
-  const frame = c.closest(".canvas-frame");
-  if (y.length < 2) return;
-  let lo = Math.min(...y), hi = Math.max(...y); const m = Math.max(1, (hi - lo) * .1); lo -= m; hi += m;
-  const mv = x => (Math.abs(x) < 0.5 ? 0 : x).toFixed(0) + " mV";
-  frame.querySelector(".y-hi").textContent = mv(hi);
-  frame.querySelector(".y-mid").textContent = mv((hi + lo) / 2);
-  frame.querySelector(".y-lo").textContent = mv(lo);
-  const n = Math.round(d.plot_sec * d.signal_hz);
-  g.lineWidth = 3; g.strokeStyle = "#059669"; g.lineJoin = "round";
-  g.beginPath();
-  y.forEach((v, i) => { const x = (n - y.length + i) / (n - 1) * W, yy = H - (v - lo) / (hi - lo) * H; i ? g.lineTo(x, yy) : g.moveTo(x, yy); });
-  g.stroke();
+  const win = d.plot_sec;
+  let lo = y.length ? Math.min(...y) : -1, hi = y.length ? Math.max(...y) : 1;
+  const m = Math.max(0.2, (hi - lo) * 0.12); lo -= m; hi += m;
+  const dp = decimals(lo, hi);
+  const yt = niceTicks(lo, hi, 5).map(v => [(Math.abs(v) < 1e-9 ? 0 : v).toFixed(dp), (v - lo) / (hi - lo)]);
+  const xt = niceTicks(-win, 0, win > 10 ? 6 : 4).map(v => [String(v), (v + win) / win]);
+  const A = axes(g, W, H, yt, xt, "전압 (mV)", "시간 (초)");
+  g.strokeStyle = GRID; g.lineWidth = 1;
+  yt.forEach(([, u]) => { const yy = Math.round(A.t + (1 - u) * A.ph) + 0.5; g.beginPath(); g.moveTo(A.l, yy); g.lineTo(A.l + A.pw, yy); g.stroke(); });
+  xt.forEach(([, u]) => { const xx = Math.round(A.l + u * A.pw) + 0.5; g.beginPath(); g.moveTo(xx, A.t); g.lineTo(xx, A.t + A.ph); g.stroke(); });
+  if (y.length > 1) {
+    const n = Math.round(win * d.signal_hz);
+    g.save(); g.beginPath(); g.rect(A.l, A.t, A.pw, A.ph); g.clip();
+    g.strokeStyle = TRACE; g.lineWidth = 1.6; g.lineJoin = "round";
+    g.beginPath();
+    y.forEach((v, i) => { const xx = A.l + (n - y.length + i) / (n - 1) * A.pw, yy = A.t + (1 - (v - lo) / (hi - lo)) * A.ph; i ? g.lineTo(xx, yy) : g.moveTo(xx, yy); });
+    g.stroke(); g.restore();
+  }
+  frame(g, A);
 }
-const STOPS = [[236, 253, 245], [16, 185, 129], [245, 158, 11], [239, 68, 68]];   // 범례 막대와 같은 색
-function color(k) {
-  const p = Math.min(.9999, Math.max(0, k)) * (STOPS.length - 1), i = Math.floor(p), f = p - i, a = STOPS[i], b = STOPS[i + 1];
-  return "rgb(" + a.map((x, j) => Math.round(x + (b[j] - x) * f)).join(",") + ")";
-}
+
+const VIRIDIS = ["#440154", "#482475", "#414487", "#355f8d", "#2a788e", "#21918c",
+                 "#22a884", "#44bf70", "#7ad151", "#bddf26", "#fde725"];
+const LUT = (() => {
+  const st = VIRIDIS.map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))), lut = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const f = i / 255 * (st.length - 1), k = Math.min(st.length - 2, Math.floor(f)), u = f - k;
+    for (let c = 0; c < 3; c++) lut[i * 3 + c] = st[k][c] + (st[k + 1][c] - st[k][c]) * u;
+  }
+  return lut;
+})();
 function drawSpec(c, d) {
   const s = size(c); if (!s) return;
   const [W, H] = s, g = c.getContext("2d");
   g.clearRect(0, 0, W, H);
-  if (!d.spec) return;
-  const z = d.spec.db, nf = z.length, nt = z[0].length;
-  let lo = Infinity, hi = -Infinity;
-  z.forEach(r => r.forEach(v => { if (v < lo) lo = v; if (v > hi) hi = v; }));
-  const cw = W / nt, ch = H / nf;
-  for (let f = 0; f < nf; f++) for (let t = 0; t < nt; t++) {
-    g.fillStyle = color(hi > lo ? (z[f][t] - lo) / (hi - lo) : 0);
-    g.fillRect(t * cw, H - (f + 1) * ch, Math.ceil(cw), Math.ceil(ch));   // 아래가 0 Hz
+  const fHi = d.spec ? d.spec.fmax : 62.5, win = d.spec ? d.spec.sec : d.window_sec;
+  const yt = niceTicks(0, fHi, 4).map(v => [String(v), v / fHi]);
+  const xt = niceTicks(-win, 0, 4).map(v => [String(v), (v + win) / win]);
+  const A = axes(g, W, H, yt, xt, "주파수 (Hz)", "시간 (초)");
+  if (d.spec) {
+    const z = d.spec.db, nf = z.length, nt = z[0].length, all = [];
+    for (let f = 1; f < nf; f++) for (const v of z[f]) all.push(v);
+    all.sort((a, b) => a - b);
+    const lo = all.length ? all[Math.floor(all.length * 0.05)] : 0;
+    const hi = all.length ? all[Math.min(all.length - 1, Math.floor(all.length * 0.995))] : 1;
+    const off = document.createElement("canvas"); off.width = nt; off.height = nf;
+    const og = off.getContext("2d"), img = og.createImageData(nt, nf);
+    for (let f = 0; f < nf; f++) for (let t = 0; t < nt; t++) {
+      const u = Math.max(0, Math.min(1, (z[f][t] - lo) / (hi - lo || 1)));
+      const k = Math.round(u * 255) * 3, o = ((nf - 1 - f) * nt + t) * 4;   // 낮은 주파수를 아래로
+      img.data[o] = LUT[k]; img.data[o + 1] = LUT[k + 1]; img.data[o + 2] = LUT[k + 2]; img.data[o + 3] = 255;
+    }
+    og.putImageData(img, 0, 0);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(off, A.l, A.t, A.pw, A.ph);
   }
+  frame(g, A);
 }
 
 /* ── 그리기 ── */
