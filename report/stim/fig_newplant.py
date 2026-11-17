@@ -23,7 +23,7 @@ SPAN = [(14.45, 19.5, "#f3e3c3"), ]
 for a in ax:
     a.axvspan(14.45, 19.5, color="#f6e7c8", lw=0)
     a.axvline(19.5, color="#555555", lw=0.8, ls=":")
-for n, c, lab in (("수분부족", C_DRY, "수분부족: 물 끊은 지 3.6~4.6일(11월 9~10일)"), ("정상_6", C_OK, "정상: 물 준 뒤 4~10시간(11월 5~6일)")):
+for n, c, lab in (("수분부족", C_DRY, "물 공급 중단: 물 끊은 지 4.0~4.9일(11월 9~10일)"), ("정상_6", C_OK, "정상: 물 준 뒤 4~10시간(11월 5~6일)")):
     t = col(n, "t") / 3600 + 1 / 60
     ax[0].plot(t, col(n, "mean"), color=c, lw=1.2, label=lab)
     ax[1].semilogy(t, col(n, "rms"), color=c, lw=0.9)
@@ -37,7 +37,7 @@ ax[1].set_ylabel("잡음(mV)"); ax[1].set_ylim(0.01, 60)
 ax[1].set_title("(나) 0.01–1 Hz 잡음 (2분 단위)", loc="left", fontsize=10)
 ax[2].set_ylabel("진폭(mV)"); ax[2].set_ylim(0.0005, 0.2)
 ax[2].set_title("(다) 60 Hz 상용전원 성분 (2분 단위)", loc="left", fontsize=10)
-ax[2].set_xlabel("기록 시작 뒤 시간(시간) — 수분부족은 17시 44분, 정상은 22시 42분에 시작")
+ax[2].set_xlabel("기록 시작 뒤 시간(시간) — 물 공급 중단은 17시 44분, 정상은 22시 42분에 시작")
 ax[2].set_xlim(0, 23); ax[2].set_xticks(range(0, 24, 2))
 for a in ax:
     a.grid(True, which="major", color="#dddddd", lw=0.5)
