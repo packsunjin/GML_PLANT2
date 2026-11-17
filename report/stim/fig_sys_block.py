@@ -133,4 +133,4 @@ txt(50, 37.6, "측정값  V = V(A0) - V(A1)  =  위 은선 전위 - 아래 은�
     8.6, INK, ha="center", va="center")
 
 out = os.path.join(os.path.dirname(__file__), "..", "FIG_SYS_BLOCK.png")
-fig.savefig(out, facecolor="white"); print(out)
+fig.savefig(out, facecolor="white", bbox_inches="tight", pad_inches=0.04); print(out)

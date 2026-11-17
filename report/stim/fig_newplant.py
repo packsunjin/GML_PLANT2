@@ -42,5 +42,5 @@ ax[2].set_xlim(0, 23); ax[2].set_xticks(range(0, 24, 2))
 for a in ax:
     a.grid(True, which="major", color="#dddddd", lw=0.5)
 fig.tight_layout()
-fig.savefig(sys.argv[1], dpi=400)
+fig.savefig(sys.argv[1], dpi=400, facecolor="white", bbox_inches="tight", pad_inches=0.04)
 print("saved", sys.argv[1])

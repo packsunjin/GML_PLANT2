@@ -67,4 +67,4 @@ ax.text(4.5, 2.17, "0.5 Hz 아래(활동전위 대역)를 거름", ha="center", 
 
 
 out = os.path.join(os.path.dirname(__file__), "..", "FIG_BAND2.png")
-fig.savefig(out, facecolor="white"); print(out)
+fig.savefig(out, facecolor="white", bbox_inches="tight", pad_inches=0.04); print(out)
