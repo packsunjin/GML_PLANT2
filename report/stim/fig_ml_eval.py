@@ -24,7 +24,7 @@ def band(x0, x1, t):
     a.text((x0 + x1) / 2, 19.8, t, ha="center", va="center", fontsize=8.3, fontweight="bold")
 def arrow(x0, x1, y=9.5):
     a.annotate("", (x1, y), (x0, y), arrowprops=dict(arrowstyle="-|>", lw=1.1, color=INK, mutation_scale=9))
-band(0, 31, "① 기록을 시간으로 반씩"); band(32.5, 52, "② 30초 창 · 5초 이동"); band(53.5, 70, "③ 특징 17개")
+band(0, 31, "① 기록을 시간으로 반씩"); band(32.5, 52, "② 30초 창 · 5초 이동"); band(53.5, 70, "③ 특징 추출 (17개)")
 band(71.5, 84, "④ 학습"); band(85.5, 100, "⑤ 평가")
 # ① 두 기록(같은 축척) + 학습/평가 반
 U = 1.85
@@ -69,27 +69,27 @@ for k, (h, c) in enumerate(((0.9, OK), (0.7, DRY))):
 a.text(95.0, 8.8, "두 부류\n평균", fontsize=6.8, color=GRAY, va="center")
 
 # (나) 정상·물 공급 중단 결과
-b = fig.add_axes([0.07, 0.16, 0.50, 0.38])
-labs = ["랜덤 포레스트\n(특징 17개)", "SVM\n(특징 17개)", "기준선\n값 하나만", "잡음 크기\n값 하나만"]
-fwd = [100.0, 99.9, 99.1, 99.1]; bwd = [66.3, 65.2, 100.0, 98.4]
-xs = np.arange(4); w = 0.36
-cols = [M1, M1, TH, TH]
+b = fig.add_axes([0.07, 0.16, 0.38, 0.38])
+labs = ["랜덤 포레스트\n(특징 추출)", "SVM\n(특징 추출)"]
+fwd = [100.0, 99.9]; bwd = [66.3, 65.2]
+xs = np.arange(2); w = 0.32
+cols = [M1, M1]
 r1 = b.bar(xs - w / 2, fwd, w, color=cols, label="앞 → 뒤")
 r2 = b.bar(xs + w / 2, bwd, w, color=cols, alpha=0.5, hatch="///", edgecolor="white", label="뒤 → 앞")
 for r in list(r1) + list(r2):
     b.text(r.get_x() + r.get_width() / 2, r.get_height() + 1.2, f"{r.get_height():g}", ha="center", fontsize=7)
-b.axhline(50, color=GRAY, ls="--", lw=0.8); b.text(-0.55, 51.5, "우연 50 %", ha="left", fontsize=7, color=GRAY, bbox=dict(fc="white", ec="none", pad=0.5))
-b.set_xticks(xs); b.set_xticklabels(labs, fontsize=7.6); b.set_ylim(0, 112); b.set_ylabel("균형 정확도 (%)")
+b.axhline(50, color=GRAY, ls="--", lw=0.8); b.text(-0.58, 51.5, "우연 50 %", ha="left", fontsize=7, color=GRAY, bbox=dict(fc="white", ec="none", pad=0.5))
+b.set_xticks(xs); b.set_xticklabels(labs, fontsize=7.8); b.set_ylim(0, 112); b.set_xlim(-0.55, 1.55); b.set_ylabel("균형 정확도 (%)")
 b.set_title("(나) 정상 대 물 공급 중단 — 균형 정확도", loc="left", fontsize=9.2)
 from matplotlib.patches import Patch
 b.legend(handles=[Patch(fc="#888888", label="앞 절반 학습 → 뒤 절반 평가"), Patch(fc="#888888", alpha=0.5, hatch="///", ec="white", label="뒤 절반 학습 → 앞 절반 평가")],
          fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2, frameon=False)
 # (다) 손 접촉
-c = fig.add_axes([0.68, 0.16, 0.30, 0.38])
-tl = ["SVM · 특징 17개", "SVM · 스펙트로그램", "랜덤 포레스트 · 특징", "랜덤 포레스트 · 스펙트로그램", "특징 1개만"]
-tv = [23, 22, 17, 12, 23]
-yy = np.arange(5)[::-1]
-c.barh(yy, tv, color=[M1, M1, M2, M2, TH], height=0.6)
+c = fig.add_axes([0.66, 0.16, 0.32, 0.38])
+tl = ["SVM · 특징 추출", "SVM · 스펙트로그램", "랜덤 포레스트 · 특징 추출", "랜덤 포레스트 · 스펙트로그램"]
+tv = [23, 22, 17, 12]
+yy = np.arange(4)[::-1]
+c.barh(yy, tv, color=[M1, M1, M2, M2], height=0.6)
 for y, v in zip(yy, tv):
     c.text(v + 0.3, y, f"{v}/23", va="center", fontsize=7)
 c.set_yticks(yy); c.set_yticklabels(tl, fontsize=7.2); c.set_xlim(0, 27)
