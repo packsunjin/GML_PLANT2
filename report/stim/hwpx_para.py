@@ -28,6 +28,15 @@ class Doc:
     def _set(self, p, text):
         runs = [r for r in p.findall(Q("run")) if r.find(Q("t")) is not None]
         assert runs, "글 run 없음"
+        m = re.match(r"^((?:표|그림|사진)\d+\.)(.*)$", text, re.S)
+        t0 = "".join(runs[0].xpath("./hp:t//text()", namespaces=NS))
+        if m and len(runs) >= 2 and re.match(r"^(?:표|그림|사진)\d+\.$", t0.strip()):
+            # 표·그림 제목: 번호(굵게)와 나머지 글의 글자 모양을 따로 둔다
+            self._put(runs[0], m.group(1)); self._put(runs[1], m.group(2))
+            for r in runs[2:]:
+                p.remove(r)
+            self._clear_seg(p)
+            return
         first = True
         for r in runs:
             for t in r.findall(Q("t")):
@@ -41,6 +50,18 @@ class Doc:
             if not first and r is not runs[0] and len(r) == 0:
                 p.remove(r)
         self._clear_seg(p)
+
+    def _put(self, r, text):
+        ts = r.findall(Q("t"))
+        for t in ts[1:]:
+            r.remove(t)
+        for c in list(ts[0]):
+            ts[0].remove(c)
+        ts[0].text = text
+
+    def move_before(self, i, j):
+        """문단 i 를 문단 j 바로 앞으로 옮긴다(표 제목을 표 위로)."""
+        self.P[j].addprevious(self.P[i])
 
     def set(self, i, text):
         self._set(self.P[i], text)
