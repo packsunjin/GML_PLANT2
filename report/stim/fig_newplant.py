@@ -19,26 +19,23 @@ C_OK, C_DRY = "#1f6fb4", "#c0504d"
 d = json.load(open(os.path.join(os.path.dirname(__file__), "newplant_stats.json"), encoding="utf-8"))
 col = lambda n, k: np.array([r[k] for r in d[n]["rows"]])
 fig, ax = plt.subplots(3, 1, figsize=(7.2, 5.7), sharex=True, gridspec_kw=dict(height_ratios=[1.25, 1, 1]))
-SPAN = [(14.45, 19.5, "#f3e3c3"), ]
-for a in ax:
-    a.axvspan(14.45, 19.5, color="#f6e7c8", lw=0)
-    a.axvline(19.5, color="#555555", lw=0.8, ls=":")
-for n, c, lab in (("수분부족", C_DRY, "물 공급 중단: 물 끊은 지 4.0~4.9일(11월 9~10일)"), ("정상_6", C_OK, "정상: 물 준 뒤 4~10시간(11월 5~6일)")):
+TEND = 14.5   # 물 공급 중단 기록은 분석에 쓴 밤 14.5시간만(11-10 08:18 이후 낮 잡음·식물 옮김 구간은 뺌, 2026-11-17)
+for n, c, lab in (("수분부족", C_DRY, "물 공급 중단: 물 끊은 지 4.0~4.6일 밤(11월 9~10일)"), ("정상_6", C_OK, "정상: 물 준 뒤 4~10시간(11월 5~6일)")):
     t = col(n, "t") / 3600 + 1 / 60
-    ax[0].plot(t, col(n, "mean"), color=c, lw=1.2, label=lab)
-    ax[1].semilogy(t, col(n, "rms"), color=c, lw=0.9)
-    ax[2].semilogy(t, col(n, "a60"), color=c, lw=0.9)
-ax[0].set_ylabel("전압 차(mV)"); ax[0].set_ylim(180, 380); ax[0].legend(loc="upper left", fontsize=8)
+    k = t <= TEND
+    ax[0].plot(t[k], col(n, "mean")[k], color=c, lw=1.2, label=lab)
+    ax[1].semilogy(t[k], col(n, "rms")[k], color=c, lw=0.9)
+    ax[2].semilogy(t[k], col(n, "a60")[k], color=c, lw=0.9)
+ax[0].set_ylabel("전압 차(mV)"); ax[0].set_ylim(195, 262); ax[0].legend(loc="center right", bbox_to_anchor=(1.0, 0.56), fontsize=8)
 ax[0].set_title("(가) 기준선 (2분 평균)", loc="left", fontsize=10)
-ax[0].text(16.95, 372, "낮: 바깥 잡음", ha="center", va="top", fontsize=8, color="#7a5a12")
-ax[0].text(19.65, 205, "식물을 옮김\n(13시 14분)", ha="left", va="center", fontsize=8, color="#333333")
-ax[1].axhline(0.1, color="#888888", lw=0.7, ls="--"); ax[1].text(22.9, 0.115, "분석 기준 0.1 mV", ha="right", va="bottom", fontsize=7.5, color="#555555")
+ax[0].text(6.1, 204, "← 정상 기록은 5.9시간에서 끊김(보조배터리 소진)", ha="left", va="center", fontsize=7.8, color=C_OK)
+ax[1].axhline(0.1, color="#888888", lw=0.7, ls="--"); ax[1].text(14.4, 0.115, "분석 기준 0.1 mV", ha="right", va="bottom", fontsize=7.5, color="#555555")
 ax[1].set_ylabel("잡음(mV)"); ax[1].set_ylim(0.01, 60)
 ax[1].set_title("(나) 0.01–1 Hz 잡음 (2분 단위)", loc="left", fontsize=10)
 ax[2].set_ylabel("진폭(mV)"); ax[2].set_ylim(0.0005, 0.2)
 ax[2].set_title("(다) 60 Hz 상용전원 성분 (2분 단위)", loc="left", fontsize=10)
 ax[2].set_xlabel("기록 시작 뒤 시간(시간) — 물 공급 중단은 17시 44분, 정상은 22시 42분에 시작")
-ax[2].set_xlim(0, 23); ax[2].set_xticks(range(0, 24, 2))
+ax[2].set_xlim(0, TEND); ax[2].set_xticks(range(0, 15, 2))
 for a in ax:
     a.grid(True, which="major", color="#dddddd", lw=0.5)
 fig.tight_layout()
