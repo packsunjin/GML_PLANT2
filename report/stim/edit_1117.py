@@ -180,7 +180,12 @@ d.repic("image3", os.path.join(R, "PHOTO4_CAGE_20261105.jpg"))
 d.repic("image4", os.path.join(R, "PHOTO5_SILVER_20261103.jpg"))
 d.repic("image8", os.path.join(R, "FIG_NEWPLANT.png"))
 
-# ── 번호: 참고문헌 [13]→[12] ──
+# ── 번호: 참고문헌 [13]→[12], 새 그림1(원리) 을 넣으니 그림1~5 → 2~6 ──
 d.replace_all(r"\[13\]", "[12]")
+d.replace_all(r"그림([1-5])", lambda m: "그림" + str(int(m.group(1)) + 1))
+S139 = d.text(139)
+d.set(139, S139.rstrip() + " 그 원리를 그림1에 나타냈다.")
+d.add_pic_after(139, 143, 144, "image10", os.path.join(R, "FIG_AP_DIFF.png"),
+                "그림1. 두 전극의 전위 차이로 활동전위가 잡히는 원리(모식도, 크기·길이·속도는 문헌[6] 값, 간격은 본 연구의 약 1 cm)")
 d.save(dst)
 print("saved", dst)

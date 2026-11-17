@@ -111,6 +111,44 @@ class Doc:
         self.bins[name] = open(path, "rb").read()
         return name
 
+    def add_pic_after(self, i, pic_model, cap_model, new_ref, path, caption):
+        """그림 문단(pic_model)과 설명 문단(cap_model)을 복사해 문단 i 뒤에 새 그림 new_ref 로 넣는다."""
+        HC = "http://www.hancom.co.kr/hwpml/2011/core"
+        pp = copy.deepcopy(self.P[pic_model])
+        pp.set("id", "0")
+        pic = pp.find(".//" + Q("pic"))
+        import random
+        pic.set("id", str(random.randint(10**9, 2 * 10**9)))
+        if pic.get("instid"):
+            pic.set("instid", str(random.randint(10**8, 9 * 10**8)))
+        pic.find(".//{%s}img" % HC).set("binaryItemIDRef", new_ref)
+        self.P[i].addnext(pp)
+        cp = copy.deepcopy(self.P[cap_model]); cp.set("id", "0")
+        self._set(cp, caption)
+        pp.addnext(cp)
+        ext = ".PNG" if path.lower().endswith(".png") else ".JPEG"
+        name = "BinData/" + new_ref + ext
+        self.new_bins = getattr(self, "new_bins", {})
+        self.new_bins[name] = (new_ref, open(path, "rb").read(), "image/png" if ext == ".PNG" else "image/jpeg")
+        self.repic_new = (new_ref, path)
+        # 크기 맞추기는 repic 과 같은 방식(새 그림은 아직 zin 에 없으니 직접)
+        from PIL import Image
+        wpx, hpx = Image.open(path).size
+        w = int(pic.find(Q("sz")).get("width")); h = round(w * hpx / wpx)
+        for tag in ("sz", "curSz", "orgSz"):
+            e = pic.find(Q(tag))
+            if e is not None:
+                e.set("width", str(w)); e.set("height", str(h))
+        for e in pic.iter("{%s}pt2" % HC):
+            e.set("x", str(w)); e.set("y", str(h))
+        for e in pic.iter("{%s}pt3" % HC):
+            e.set("y", str(h))
+        c = pic.find(Q("imgClip"))
+        if c is not None:
+            c.set("left", "0"); c.set("top", "0"); c.set("right", str(wpx * 75)); c.set("bottom", str(hpx * 75))
+        for ls in pp.iter(Q("lineseg")):
+            ls.set("vertsize", str(h)); ls.set("textheight", str(h)); ls.set("baseline", str(round(h * 0.85)))
+
     def set_bin(self, name, path):
         self.bins[name] = open(path, "rb").read()
 
@@ -118,7 +156,12 @@ class Doc:
         xml = etree.tostring(self.root, xml_declaration=True, encoding="UTF-8", standalone=True)
         with zipfile.ZipFile(dst, "w") as z:
             for it in self.zin.infolist():
-                if it.filename == "Contents/section0.xml":
+                if it.filename == "Contents/content.hpf" and getattr(self, "new_bins", None):
+                    hpf = self.zin.read(it.filename).decode("utf-8")
+                    add = "".join(f'<opf:item id="{r}" href="{n}" media-type="{mt}" isEmbeded="1"/>'
+                                  for n, (r, _, mt) in self.new_bins.items())
+                    data = hpf.replace("</opf:manifest>", add + "</opf:manifest>").encode("utf-8")
+                elif it.filename == "Contents/section0.xml":
                     data = xml
                 elif it.filename in self.bins:
                     data = self.bins[it.filename]
@@ -126,3 +169,5 @@ class Doc:
                     data = self.zin.read(it.filename)
                 ct = zipfile.ZIP_STORED if it.filename == "mimetype" else zipfile.ZIP_DEFLATED
                 z.writestr(it.filename, data, compress_type=ct)
+            for n, (_, b, _) in getattr(self, "new_bins", {}).items():
+                z.writestr(n, b, compress_type=zipfile.ZIP_DEFLATED)
