@@ -61,22 +61,16 @@ for k, t1 in enumerate(("SVM", "랜덤\n포레스트")):
     a.add_patch(FancyBboxPatch((72.2, y - 2.3), 11.0, 4.6, boxstyle="round,pad=0,rounding_size=0.8", fc="white", ec=M1, lw=1.2))
     a.text(77.7, y, t1, ha="center", va="center", fontsize=8.2, fontweight="bold", color=M1, linespacing=1.1)
 arrow(83.8, 85.3)
-# ⑤ 균형 정확도 막대 + 문턱 하나
-a.add_patch(FancyBboxPatch((86.2, 11.0), 13.2, 5.0, boxstyle="round,pad=0,rounding_size=0.8", fc="white", ec="#9aa7b4", lw=0.9))
-a.text(92.8, 14.7, "균형 정확도", ha="center", va="center", fontsize=7.8, fontweight="bold")
+# ⑤ 균형 정확도
+a.add_patch(FancyBboxPatch((86.2, 6.0), 13.2, 8.0, boxstyle="round,pad=0,rounding_size=0.8", fc="white", ec="#9aa7b4", lw=0.9))
+a.text(92.8, 12.3, "균형 정확도", ha="center", va="center", fontsize=7.8, fontweight="bold")
 for k, (h, c) in enumerate(((0.9, OK), (0.7, DRY))):
-    a.add_patch(FancyBboxPatch((88.0 + k * 3.0, 11.8), 2.0, 2.0 * h, boxstyle="square,pad=0", fc=c, ec="none"))
-a.text(95.2, 12.6, "평균", fontsize=6.8, color=GRAY, va="center")
-a.add_patch(FancyBboxPatch((86.2, 3.4), 13.2, 5.6, boxstyle="round,pad=0,rounding_size=0.8", fc="#fbf4ea", ec="#d4b48a", lw=0.9))
-a.text(92.8, 7.6, "비교: 문턱 하나", ha="center", va="center", fontsize=7.8, fontweight="bold")
-a.plot([87.4, 98.2], [5.0, 5.0], color=GRAY, lw=0.8)
-a.plot([92.0, 92.0], [4.1, 6.3], color=TH, lw=2)
-for x_, c in ((88.4, OK), (89.6, OK), (90.7, OK), (93.6, DRY), (95.0, DRY), (96.6, DRY)):
-    a.plot(x_, 5.0, "o", ms=3.2, color=c)
+    a.add_patch(FancyBboxPatch((88.0 + k * 3.0, 7.2), 2.0, 3.6 * h, boxstyle="square,pad=0", fc=c, ec="none"))
+a.text(95.0, 8.8, "두 부류\n평균", fontsize=6.8, color=GRAY, va="center")
 
 # (나) 정상·물 공급 중단 결과
 b = fig.add_axes([0.07, 0.16, 0.50, 0.38])
-labs = ["랜덤 포레스트\n(특징 17개)", "SVM\n(특징 17개)", "문턱 하나\n(기준선)", "문턱 하나\n(잡음 크기)"]
+labs = ["랜덤 포레스트\n(특징 17개)", "SVM\n(특징 17개)", "기준선\n값 하나만", "잡음 크기\n값 하나만"]
 fwd = [100.0, 99.9, 99.1, 99.1]; bwd = [66.3, 65.2, 100.0, 98.4]
 xs = np.arange(4); w = 0.36
 cols = [M1, M1, TH, TH]
@@ -86,13 +80,13 @@ for r in list(r1) + list(r2):
     b.text(r.get_x() + r.get_width() / 2, r.get_height() + 1.2, f"{r.get_height():g}", ha="center", fontsize=7)
 b.axhline(50, color=GRAY, ls="--", lw=0.8); b.text(-0.55, 51.5, "우연 50 %", ha="left", fontsize=7, color=GRAY, bbox=dict(fc="white", ec="none", pad=0.5))
 b.set_xticks(xs); b.set_xticklabels(labs, fontsize=7.6); b.set_ylim(0, 112); b.set_ylabel("균형 정확도 (%)")
-b.set_title("(나) 정상 대 물 공급 중단 — 모델은 방향에 따라 흔들리고, 문턱 하나로도 갈림", loc="left", fontsize=9.2)
+b.set_title("(나) 정상 대 물 공급 중단 — 균형 정확도", loc="left", fontsize=9.2)
 from matplotlib.patches import Patch
 b.legend(handles=[Patch(fc="#888888", label="앞 절반 학습 → 뒤 절반 평가"), Patch(fc="#888888", alpha=0.5, hatch="///", ec="white", label="뒤 절반 학습 → 앞 절반 평가")],
          fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2, frameon=False)
 # (다) 손 접촉
 c = fig.add_axes([0.68, 0.16, 0.30, 0.38])
-tl = ["SVM · 특징 17개", "SVM · 스펙트로그램", "랜덤 포레스트 · 특징", "랜덤 포레스트 · 스펙트로그램", "문턱 하나 · 특징 1개"]
+tl = ["SVM · 특징 17개", "SVM · 스펙트로그램", "랜덤 포레스트 · 특징", "랜덤 포레스트 · 스펙트로그램", "특징 1개만"]
 tv = [23, 22, 17, 12, 23]
 yy = np.arange(5)[::-1]
 c.barh(yy, tv, color=[M1, M1, M2, M2, TH], height=0.6)
