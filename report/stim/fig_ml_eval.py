@@ -33,10 +33,6 @@ a.add_patch(FancyBboxPatch((0.5 + L * 0.5 + 0.15, 10.8), L * 0.5 - 0.15, 2.6, bo
 a.text(0.5 + L * 0.25, 12.1, "학습", ha="center", va="center", fontsize=7.3, color="white", fontweight="bold")
 a.text(0.5 + L * 0.75, 12.1, "평가", ha="center", va="center", fontsize=7.3, color=INK, fontweight="bold")
 a.text(0.5, 15.2, "콘센트 전원 600초 · 잎 만짐 9번", fontsize=7.4, color=M1, va="center")
-for k in range(9):
-    x = 0.5 + L * (189.28 + 30 * k) / 600
-    a.plot([x, x], [7.6, 9.9], color="#d4a017", lw=1.6)
-a.text(21.3, 8.75, "← 잎 잡은 시각", fontsize=6.8, color="#9a7400", va="center")
 a.annotate("", (8.6, 3.3), (22.6, 3.3), arrowprops=dict(arrowstyle="<|-|>", lw=0.9, color=GRAY, mutation_scale=8))
 a.text(15.6, 1.6, "앞·뒤를 바꿔 한 번 더", ha="center", fontsize=7, color=GRAY)
 arrow(29.0, 32.3)
@@ -51,10 +47,10 @@ a.annotate("", (36.1, 8.6), (33.5, 8.6), arrowprops=dict(arrowstyle="<|-|>", lw=
 a.text(36.6, 8.6, "0.5초씩 밀기", ha="left", va="center", fontsize=6.6, color=GRAY)
 arrow(52.2, 53.3)
 # ③ 특징 칩 3개
-for k, (t1, n, col) in enumerate((("전압 크기·흔들림", "7", "#3d5a80"), ("빠르기(주파수)", "7", "#5c8db8"), ("높이·기울기", "3", "#a0522d"))):
+for k, (t1, n, col) in enumerate((("시간 (전압 크기·흔들림)", "7", "#3d5a80"), ("주파수 (빠르기)", "7", "#5c8db8"), ("기준선 (높이·기울기)", "3", "#a0522d"))):
     y = 14.2 - k * 4.6
     a.add_patch(FancyBboxPatch((54.3, y - 1.6), 14.8, 3.2, boxstyle="round,pad=0,rounding_size=0.6", fc=col, ec="none", alpha=0.9))
-    a.text(55.3, y, t1, va="center", fontsize=7.2, color="white", fontweight="bold")
+    a.text(55.0, y, t1, va="center", fontsize=6.8, color="white", fontweight="bold")
     a.text(67.6, y, n, va="center", ha="right", fontsize=11, color="white", fontweight="bold")
 arrow(69.8, 71.3)
 # ④ 모델 두 개
