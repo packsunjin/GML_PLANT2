@@ -164,6 +164,25 @@ for pic in d.root.iter(Q("pic")):
     sz = pic.find(Q("sz")); w0 = int(sz.get("width")); h0 = int(sz.get("height"))
     wt = W_REF.get(pic.find(".//{%s}img" % HC).get("binaryItemIDRef"), W_FIG)
     w, h = wt, round(h0 * wt / w0)
+    # 좁은 그림은 양옆에 흰 여백을 붙여 본문 폭(48190)에 꽉 차게 — 한글에서 가운데 정렬이 안 먹어 왼쪽에 붙었다(11-19).
+    # 보이는 사진 크기·높이(쪽수)는 그대로다.
+    W_FULL = 48190
+    if w < W_FULL:
+        import io
+        ref_ = pic.find(".//{%s}img" % HC).get("binaryItemIDRef")
+        nb = getattr(d, "new_bins", {})
+        key = "BinData/%s.JPEG" % ref_
+        if key in nb: raw = nb[key][1]
+        else:
+            key = [n for n in d.zin.namelist() if n.startswith("BinData/" + ref_ + ".")][0]
+            raw = d.bins.get(key) or d.zin.read(key)
+        im = Image.open(io.BytesIO(raw)); fmt = im.format; im = im.convert("RGB")
+        nw = round(im.width * W_FULL / w); canvas = Image.new("RGB", (nw, im.height), "white")
+        canvas.paste(im, ((nw - im.width) // 2, 0)); buf = io.BytesIO(); canvas.save(buf, fmt, quality=95)
+        if key in nb: nb[key] = (nb[key][0], buf.getvalue(), nb[key][2])
+        else: d.bins[key] = buf.getvalue()
+        c = pic.find(Q("imgClip")); c.set("right", str(nw * 75)); c.set("bottom", str(im.height * 75))
+        w = W_FULL
     for tag in ("sz", "curSz", "orgSz"):
         e = pic.find(Q(tag))
         if e is not None: e.set("width", str(w)); e.set("height", str(h))
