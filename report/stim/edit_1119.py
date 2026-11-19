@@ -6,6 +6,7 @@
 import os, re, sys
 sys.path.insert(0, os.path.dirname(__file__))
 from hwpx_para import Doc, Q
+from lxml import etree
 
 src, mdp, dst = sys.argv[1:4]
 L = [l.rstrip("\n") for l in open(mdp, encoding="utf-8")]
@@ -124,23 +125,69 @@ pic_before(cap_p4, "07", 21); pic_before(cap_f5, "10", 22); pic_before(cap_f6, "
 # 그림마다 쪽이 넘어간다(11-19 한글 31쪽 확인). 그래서 그림은 줄에 묶지 않고 문단에 붙은 개체(위아래 자리차지,
 # 가운데)로 바꾼다 — 개체는 줄 배치 정보 없이도 한글이 자리를 잡는다.
 for p in d.root.iter(Q("p")):
+    keep = os.environ.get("INLINE") and p.find(".//" + Q("pic")) is not None   # 그림 문단은 줄 정보가 있어야 그려진다
     for sa in p.findall(Q("linesegarray")):
-        p.remove(sa)
-# 표(개체) 바로 뒤 빈 문단 다음에 그림 문단이 오면 한글에서 표와 그림이 겹친다(11-19 표6·그림7 확인).
-# 표 문단 바로 뒤에 그림 문단이 오는 사진1 은 안 겹쳤으므로, 그 사이 빈 문단을 지워 같은 모양으로 만든다.
-top = [p for p in d.root if p.tag == Q("p")]
-for k, p in enumerate(top):
-    if p.find(".//" + Q("pic")) is not None and k >= 2:
-        mid = top[k - 1]
-        if top[k - 2].find(".//" + Q("tbl")) is not None and mid.find(".//" + Q("tbl")) is None \
-                and not "".join(x.text or "" for x in mid.iter(Q("t"))).strip():
-            d.root.remove(mid)
-for pic in d.root.iter(Q("pic")):
+        if not keep: p.remove(sa)
+# 표(개체) 바로 뒤에 그림(개체)이 오면 한글에서 둘이 겹친다(11-19 표6·그림7, rhwp 로 표2·사진1 도 재현).
+# 그 그림 문단과 캡션을 표 제목 앞으로 옮긴다(표 뒤 빈 문단은 지운다).
+def _pic_after_table():
+    top = [p for p in d.root if p.tag == Q("p")]
+    for k, p in enumerate(top):
+        if p.find(".//" + Q("pic")) is None: continue
+        j_ = k - 1
+        while j_ >= 0 and top[j_].find(".//" + Q("tbl")) is None and not "".join(x.text or "" for x in top[j_].iter(Q("t"))).strip():
+            j_ -= 1
+        if j_ >= 1 and top[j_].find(".//" + Q("tbl")) is not None:
+            return top, k, j_
+    return None
+while not os.environ.get("INLINE"):                # 옮기고 나면 다음 그림이 표 뒤에 올 수 있어 다시 본다
+    r_ = _pic_after_table()
+    if r_ is None: break
+    top, k, j_ = r_; p = top[k]
+    if True:
+        tcap = top[j_ - 1]                       # 표 제목(표 위)
+        assert re.match(r"^표\d+\.", "".join(x.text or "" for x in tcap.iter(Q("t")))), "표 제목 아님"
+        for e in top[j_ + 1:k]: d.root.remove(e)  # 표와 그림 사이 빈 문단
+        cap = top[k + 1]
+        tcap.addprevious(p); tcap.addprevious(cap)
+for pic in ([] if os.environ.get("INLINE") else d.root.iter(Q("pic"))):
     pic.set("textWrap", "TOP_AND_BOTTOM")
     pos = pic.find(Q("pos"))
     pos.set("treatAsChar", "0"); pos.set("flowWithText", "1"); pos.set("allowOverlap", "0")
     pos.set("vertRelTo", "PARA"); pos.set("vertAlign", "TOP"); pos.set("vertOffset", "0")
     pos.set("horzRelTo", "COLUMN"); pos.set("horzAlign", "CENTER"); pos.set("horzOffset", "0")
+# 그림 가로를 39902(양식 기준, 본문 폭의 약 83 %)로 줄인다 — 20쪽 안에 넣으려고(rhwp 로 21쪽 확인).
+W_FIG = 39902
+for pic in d.root.iter(Q("pic")):
+    sz = pic.find(Q("sz")); w0 = int(sz.get("width")); h0 = int(sz.get("height"))
+    w, h = W_FIG, round(h0 * W_FIG / w0)
+    for tag in ("sz", "curSz", "orgSz"):
+        e = pic.find(Q(tag))
+        if e is not None: e.set("width", str(w)); e.set("height", str(h))
+    for e in pic.iter("{%s}pt1" % HC): e.set("x", str(w))
+    for e in pic.iter("{%s}pt2" % HC): e.set("x", str(w)); e.set("y", str(h))
+    for e in pic.iter("{%s}pt3" % HC): e.set("y", str(h))
+# 그림 원본 크기(imgDim)를 새 그림에 맞춘다 — 안 맞추면 잘라 보기(imgClip)가 원본보다 커서 그림이 안 그려진다(11-19).
+for pic in d.root.iter(Q("pic")):
+    c = pic.find(Q("imgClip")); dm = pic.find(Q("imgDim"))
+    if c is not None and dm is not None:
+        dm.set("dimwidth", c.get("right")); dm.set("dimheight", c.get("bottom"))
+if os.environ.get("INLINE"):
+    # 글자 없는 그림 문단은 줄 배치 정보가 없으면 그려지지 않는다(한글 B판·rhwp 둘 다).
+    # 그림을 캡션 문단 맨 앞에 글자처럼 넣고 줄을 바꾸면, 글자가 있는 문단이라 한글이 줄 배치를 새로 계산한다.
+    for pp in [p for p in d.root if p.tag == Q("p") and p.find(".//" + Q("pic")) is not None]:
+        cap = pp.getnext()
+        run = [r for r in pp.findall(Q("run")) if r.find(".//" + Q("pic")) is not None][0]
+        pic = run.find(".//" + Q("pic"))
+        pos = pic.find(Q("pos")); pos.set("treatAsChar", "1"); pos.set("flowWithText", "0")
+        for c in list(run):
+            if c.tag == Q("t"): run.remove(c)
+        t = etree.SubElement(run, Q("t")); etree.SubElement(t, Q("lineBreak"))
+        first = cap.find(Q("run"))
+        first.addprevious(run)
+        d.root.remove(pp)
+    for p in d.root.iter(Q("p")):
+        for sa in p.findall(Q("linesegarray")): p.remove(sa)
 if os.environ.get("NOPIC"):   # 그림 없는 판(캡션만) — 사용자가 한글에서 그림을 직접 넣는다
     for p in [p for p in d.root if p.tag == Q("p") and p.find(".//" + Q("pic")) is not None]:
         d.root.remove(p)
