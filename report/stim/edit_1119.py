@@ -176,20 +176,19 @@ for pic in d.root.iter(Q("pic")):
     if c is not None and dm is not None:
         dm.set("dimwidth", c.get("right")); dm.set("dimheight", c.get("bottom"))
 if os.environ.get("INLINE"):
-    # 글자 없는 그림 문단은 줄 배치 정보가 없으면 그려지지 않는다(한글 B판·rhwp 둘 다).
-    # 그림을 캡션 문단 맨 앞에 글자처럼 넣고 줄을 바꾸면, 글자가 있는 문단이라 한글이 줄 배치를 새로 계산한다.
+    # 그림은 자기 문단(가운데, 글자처럼 취급)에 두고 Enter 로 캡션 문단과 나눈다(사용자 11-19 "엔터 쳐서 띄우는 방식").
+    # 글자 없는 그림 문단은 줄 배치 정보가 없으면 한글이 안 그린다(B판) → 그림 뒤에 빈칸 한 글자를 넣어
+    # 글자가 있는 문단으로 만들어 한글이 줄 배치를 새로 계산하게 한다.
     for pp in [p for p in d.root if p.tag == Q("p") and p.find(".//" + Q("pic")) is not None]:
         cap = pp.getnext()
+        pp.set("paraPrIDRef", cap.get("paraPrIDRef"))          # 캡션과 같은 가운데 정렬
         run = [r for r in pp.findall(Q("run")) if r.find(".//" + Q("pic")) is not None][0]
         pic = run.find(".//" + Q("pic"))
         pos = pic.find(Q("pos")); pos.set("treatAsChar", "1"); pos.set("flowWithText", "0")
         for c in list(run):
             if c.tag == Q("t"): run.remove(c)
-        t = etree.SubElement(run, Q("t")); etree.SubElement(t, Q("lineBreak"))
-        run.set("charPrIDRef", "35")   # 그림 뒤 줄바꿈 글자 크기를 캡션(11pt)과 같게
-        first = cap.find(Q("run"))
-        first.addprevious(run)
-        d.root.remove(pp)
+        t = etree.SubElement(run, Q("t")); t.text = " "
+        run.set("charPrIDRef", "35")
     for p in d.root.iter(Q("p")):
         for sa in p.findall(Q("linesegarray")): p.remove(sa)
 # 표4 마지막 줄: 정상·자극은 다시 학습하지 않았고 손 접촉 기록으로 다시 학습했다(검토 11-19)
@@ -246,6 +245,8 @@ with _z.ZipFile(dst, "w") as _zo:
         if it.filename == "Contents/header.xml":
             h = data.decode("utf-8")
             h = re.sub(r'(<hh:paraPr id="19".*?<hh:breakSetting [^>]*?)keepLines="0"', r'\1keepLines="1"', h, count=1, flags=re.S)
+            # 그림 문단·표 제목은 다음 문단(캡션·표)과 같은 쪽에(그림 문단과 캡션·표 제목이 같은 paraPr 19)
+            h = re.sub(r'(<hh:paraPr id="19".*?<hh:breakSetting [^>]*?)keepWithNext="0"', r'\1keepWithNext="1"', h, count=1, flags=re.S)
             data = h.encode("utf-8")
         _zo.writestr(it, data, compress_type=_z.ZIP_STORED if it.filename == "mimetype" else _z.ZIP_DEFLATED)
 print("saved", dst)
