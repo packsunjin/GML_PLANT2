@@ -126,6 +126,15 @@ pic_before(cap_p4, "07", 21); pic_before(cap_f5, "10", 22); pic_before(cap_f6, "
 for p in d.root.iter(Q("p")):
     for sa in p.findall(Q("linesegarray")):
         p.remove(sa)
+# 표(개체) 바로 뒤 빈 문단 다음에 그림 문단이 오면 한글에서 표와 그림이 겹친다(11-19 표6·그림7 확인).
+# 표 문단 바로 뒤에 그림 문단이 오는 사진1 은 안 겹쳤으므로, 그 사이 빈 문단을 지워 같은 모양으로 만든다.
+top = [p for p in d.root if p.tag == Q("p")]
+for k, p in enumerate(top):
+    if p.find(".//" + Q("pic")) is not None and k >= 2:
+        mid = top[k - 1]
+        if top[k - 2].find(".//" + Q("tbl")) is not None and mid.find(".//" + Q("tbl")) is None \
+                and not "".join(x.text or "" for x in mid.iter(Q("t"))).strip():
+            d.root.remove(mid)
 for pic in d.root.iter(Q("pic")):
     pic.set("textWrap", "TOP_AND_BOTTOM")
     pos = pic.find(Q("pos"))
