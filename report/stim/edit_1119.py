@@ -1,5 +1,5 @@
 """edit_1119.py — 11-17 판(GML_결과보고서_20261117.hwpx)에 11-19 최종 본문(최종보고서_본문_20261119.md)을 넣는다.
-그림 12개를 캡션 바로 위에 글자처럼 취급으로 넣는다(report/보고서_그림_순서대로/ 의 JPG). 글 문단 줄 배치는 지우고 그림 문단만 세로 위치 0 으로 둔다.
+그림 12개를 캡션 바로 위 문단에 넣는다(report/보고서_그림_순서대로/ 의 JPG). 줄 배치는 모두 지우고, 그림은 문단에 붙은 개체(위아래 자리차지·가운데)로 둔다.
 쓰는 법(저장소 루트): python3 report/stim/edit_1119.py report/GML_결과보고서_20261117.hwpx report/최종보고서_본문_20261119.md report/GML_결과보고서_최종_20261119.hwpx
 문단 번호는 20261117.hwpx 기준(hwpx_para.Doc.P).
 """
@@ -120,14 +120,18 @@ def pic_before(cap, k, n):
     for ls in pp.iter(Q("lineseg")):
         ls.set("vertsize", str(h)); ls.set("textheight", str(h)); ls.set("baseline", str(round(h * 0.85)))
 pic_before(cap_p4, "07", 21); pic_before(cap_f5, "10", 22); pic_before(cap_f6, "11", 23)
-# 줄 배치: 글 문단은 모두 지우고(한글이 다시 계산), 그림 문단은 남기되 세로 위치 0(그림이 보이게 — 11-17 C판 방식)
+# 줄 배치: 모두 지운다(한글이 다시 계산). 그림 문단의 세로 위치를 0 으로 두면 한글이 '새 쪽 맨 위'로 읽어
+# 그림마다 쪽이 넘어간다(11-19 한글 31쪽 확인). 그래서 그림은 줄에 묶지 않고 문단에 붙은 개체(위아래 자리차지,
+# 가운데)로 바꾼다 — 개체는 줄 배치 정보 없이도 한글이 자리를 잡는다.
 for p in d.root.iter(Q("p")):
-    has_pic = p.find(".//" + Q("pic")) is not None
     for sa in p.findall(Q("linesegarray")):
-        if has_pic:
-            for ls in sa.findall(Q("lineseg")): ls.set("vertpos", "0")
-        else:
-            p.remove(sa)
+        p.remove(sa)
+for pic in d.root.iter(Q("pic")):
+    pic.set("textWrap", "TOP_AND_BOTTOM")
+    pos = pic.find(Q("pos"))
+    pos.set("treatAsChar", "0"); pos.set("flowWithText", "1"); pos.set("allowOverlap", "0")
+    pos.set("vertRelTo", "PARA"); pos.set("vertAlign", "TOP"); pos.set("vertOffset", "0")
+    pos.set("horzRelTo", "COLUMN"); pos.set("horzAlign", "CENTER"); pos.set("horzOffset", "0")
 d.save(dst); print("saved", dst)
 for n in os.listdir(os.path.dirname(dst)):
     if n.startswith("_tmp_") and n.endswith(".png"): os.remove(os.path.join(os.path.dirname(dst), n))
