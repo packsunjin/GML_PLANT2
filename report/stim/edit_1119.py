@@ -29,7 +29,7 @@ d.replace_all("수분부족을 판단하는 기준", "물 공급 중단 상태�
 d.replace_all("수분부족처럼", "물 공급 중단처럼")
 # Ⅲ
 S(163, "측정 범위는 ADS1115의 PGA로 정하며")
-C(192, M("사진1. 본 실험 장치")); C(195, M("사진2. 줄기 밑동")); 
+C(192, M("사진1. 본 실험 장치")); C(195, "사진2. 줄기 밑동에 꽂은 은선 전극"); 
 S(199, "측정값의 오차는 회로, 전극, 식물")
 C(207, "식물·은선 전극을 상자 밖·콘센트, 상자 안·콘센트, 상자 안·보조배터리 전원으로 120초씩 기록")
 C(213, "물을 준 식물을 상자 안에서 손대지 않고 기록(5.9시간)")
@@ -91,7 +91,15 @@ G = os.path.join(os.path.dirname(dst), "보고서_그림_순서대로")
 F = {n[:2]: os.path.join(G, n) for n in os.listdir(G) if n.endswith(".jpg")}
 def ref(i):
     return d.P[i].find(".//" + Q("pic")).find(".//{%s}img" % HC).get("binaryItemIDRef")
-for i, k in ((143, "01"), (160, "02"), (191, "03"), (194, "04"), (196, "05"), (272, "06"), (282, "08"), (293, "09"), (347, "12")):
+# 사진2·사진3 을 한 줄에 나란히(사용자 11-19): 두 사진을 같은 높이로 붙인 그림 한 장 + 캡션 한 줄에 두 번호
+from PIL import Image
+_a, _b = Image.open(F["04"]).convert("RGB"), Image.open(F["05"]).convert("RGB")
+_H = min(_a.height, _b.height); _a = _a.resize((round(_a.width * _H / _a.height), _H)); _b = _b.resize((round(_b.width * _H / _b.height), _H))
+_gap = round(_H * 0.04); _pair = Image.new("RGB", (_a.width + _gap + _b.width, _H), "white")
+_pair.paste(_a, (0, 0)); _pair.paste(_b, (_a.width + _gap, 0))
+F["04"] = os.path.join(os.path.dirname(dst), "_tmp_pair.jpg"); _pair.save(F["04"], quality=95)
+PAIR_SPLIT = _a.width / _pair.width          # 왼쪽 사진이 차지하는 비율(캡션 간격용)
+for i, k in ((143, "01"), (160, "02"), (191, "03"), (194, "04"), (272, "06"), (282, "08"), (293, "09"), (347, "12")):
     assert d.P[i].find(".//" + Q("pic")) is not None
     old = [n for n in d.zin.namelist() if n.startswith("BinData/" + ref(i) + ".")][0]
     src_img = F[k]
@@ -99,6 +107,14 @@ for i, k in ((143, "01"), (160, "02"), (191, "03"), (194, "04"), (196, "05"), (2
         from PIL import Image
         src_img = os.path.join(os.path.dirname(dst), "_tmp_%s.png" % k); Image.open(F[k]).save(src_img)
     d.repic(ref(i), src_img)
+cap2 = d.P[195]
+d.delete(196); d.delete(197)                  # 사진3 그림 문단과 캡션
+_runs = [r for r in cap2.findall(Q("run")) if r.find(Q("t")) is not None]
+_rb, _rr = copy.deepcopy(_runs[0]), copy.deepcopy(_runs[-1])
+for _r, _txt_ in ((_rr, "　　　　　　"), (_rb, "사진3."), (copy.deepcopy(_runs[-1]), " 측정 회로의 배선")):
+    for _t in _r.findall(Q("t")): _r.remove(_t)
+    etree.SubElement(_r, Q("t")).text = _txt_; cap2.append(_r)
+for _sa in cap2.findall(Q("linesegarray")): cap2.remove(_sa); cap2.append(_sa)
 d.new_bins = {}
 def pic_before(cap, k, n):
     pp = copy.deepcopy(d.P[272]); pp.set("id", "0")
@@ -159,7 +175,7 @@ for pic in ([] if os.environ.get("INLINE") else d.root.iter(Q("pic"))):
 # 그림 가로를 39902(양식 기준, 본문 폭의 약 83 %)로 줄인다 — 20쪽 안에 넣으려고(rhwp 로 21쪽 확인).
 W_FIG = 39902
 # 세로로 긴 사진은 더 좁게(20쪽 안에 넣으려고): 사진2·사진4·사진5 30000, 사진3 32000
-W_REF = {"image3": 36000, "image4": 28000, "image5": 30000, "image21": 28000, "image10": 28000}
+W_REF = {"image3": 36000, "image4": 48190, "image21": 28000, "image10": 28000}
 for pic in d.root.iter(Q("pic")):
     sz = pic.find(Q("sz")); w0 = int(sz.get("width")); h0 = int(sz.get("height"))
     wt = W_REF.get(pic.find(".//{%s}img" % HC).get("binaryItemIDRef"), W_FIG)
@@ -261,6 +277,13 @@ for p in list(d.root.iter(Q("p"))):
     if "추후 공문 안내" in _txt(p) and "20페이지" in _txt(p):
         for r in p.findall(Q("run")):
             for x in r.findall(Q("t")): r.remove(x)
+# 빈 줄에 빈칸 한 글자 — 글자 없는 빈 문단은 rhwp 가 높이 0 으로 그려 쪽수를 적게 셌다(한글은 한 줄로 친다)
+_top = [p for p in d.root if p.tag == Q("p")]
+_b0 = [i for i, p in enumerate(_top) if "".join(x.text or "" for x in p.iter(Q("t"))).strip() == "Ⅰ. 서론"][-1]
+for p in _top[_b0:]:
+    if not "".join(x.text or "" for x in p.iter(Q("t"))).strip() and p.find(".//" + Q("tbl")) is None and p.find(".//" + Q("pic")) is None:
+        ts = list(p.iter(Q("t")))
+        if ts: ts[0].text = " "
 if os.environ.get("NOPIC"):   # 그림 없는 판(캡션만) — 사용자가 한글에서 그림을 직접 넣는다
     for p in [p for p in d.root if p.tag == Q("p") and p.find(".//" + Q("pic")) is not None]:
         d.root.remove(p)
@@ -279,4 +302,4 @@ with _z.ZipFile(dst, "w") as _zo:
         _zo.writestr(it, data, compress_type=_z.ZIP_STORED if it.filename == "mimetype" else _z.ZIP_DEFLATED)
 print("saved", dst)
 for n in os.listdir(os.path.dirname(dst)):
-    if n.startswith("_tmp_") and n.endswith(".png"): os.remove(os.path.join(os.path.dirname(dst), n))
+    if n.startswith("_tmp_") and n.endswith((".png", ".jpg")): os.remove(os.path.join(os.path.dirname(dst), n))
