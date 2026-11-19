@@ -14,64 +14,35 @@ for f in ("NotoSansCJK-Regular.ttc", "NotoSansCJK-Bold.ttc"):
 plt.rcParams.update({"font.family": "Noto Sans CJK JP", "axes.unicode_minus": False, "font.size": 9})
 INK, GRAY, OK, DRY, M1, M2, TH = "#1d1d1d", "#707070", "#1f6fb4", "#c0504d", "#3d5a80", "#98c1d9", "#b0b0b0"
 
-fig = plt.figure(figsize=(10, 5.0), dpi=300)
-# (가) 학습·평가 방식 — 회로 구성도(그림2)와 같은 단계 띠 + 그림 위주
-a = fig.add_axes([0.01, 0.60, 0.98, 0.39]); a.set_xlim(0, 100); a.set_ylim(0, 24); a.axis("off")
-a.text(0, 23.9, "(가) 학습·평가 방식", fontsize=10, fontweight="bold", va="top")
-PAPER = "#f4f6f8"
-def band(x0, x1, t):
-    a.add_patch(FancyBboxPatch((x0, 18.6), x1 - x0, 2.4, boxstyle="square,pad=0", fc=PAPER, ec="none"))
-    a.text((x0 + x1) / 2, 19.8, t, ha="center", va="center", fontsize=8.3, fontweight="bold")
-def arrow(x0, x1, y=9.5):
-    a.annotate("", (x1, y), (x0, y), arrowprops=dict(arrowstyle="-|>", lw=1.1, color=INK, mutation_scale=9))
-band(0, 31, "① 콘센트 기록을 시간으로 반씩"); band(32.5, 52, "② 2초 창 · 0.5초 이동"); band(53.5, 70, "③ 특징 추출 (17개)")
-band(71.5, 84, "④ 학습"); band(85.5, 100, "⑤ 평가")
-# ① 콘센트 기록 600초: 만진 시각 9번, 앞 4번/뒤 5번
-L = 28.0
-a.add_patch(FancyBboxPatch((0.5, 10.8), L * 0.5 - 0.15, 2.6, boxstyle="round,pad=0,rounding_size=0.35", fc=M1, ec="none"))
-a.add_patch(FancyBboxPatch((0.5 + L * 0.5 + 0.15, 10.8), L * 0.5 - 0.15, 2.6, boxstyle="round,pad=0,rounding_size=0.35", fc=M1, alpha=0.28, ec="none"))
-a.text(0.5 + L * 0.25, 12.1, "학습", ha="center", va="center", fontsize=7.3, color="white", fontweight="bold")
-a.text(0.5 + L * 0.75, 12.1, "평가", ha="center", va="center", fontsize=7.3, color=INK, fontweight="bold")
-a.text(0.5, 15.2, "콘센트 전원 600초 · 잎 만짐 9번", fontsize=7.4, color=M1, va="center")
-for k in range(9):
-    x = 0.5 + L * (189.28 + 30 * k) / 600
-    a.plot([x, x], [7.6, 9.9], color="#d4a017", lw=1.6)
-a.text(0.5, 6.2, "노란 선 = 잎을 잡은 시각", fontsize=6.8, color=GRAY, va="center")
-a.annotate("", (8.6, 3.3), (22.6, 3.3), arrowprops=dict(arrowstyle="<|-|>", lw=0.9, color=GRAY, mutation_scale=8))
-a.text(15.6, 1.6, "학습 · 평가 바꿔 한 번 더", ha="center", fontsize=7, color=GRAY)
-arrow(29.0, 32.3)
-# ② 신호 + 겹치는 창
-xx = np.linspace(0, 1, 400)
-a.plot(33 + 18.5 * xx, 6.0 + 1.1 * np.sin(xx * 34) * (0.6 + 0.4 * np.sin(xx * 5)), color="#4a4a4a", lw=0.9)
-for k in range(4):
-    x = 33.5 + k * 2.6
-    a.add_patch(FancyBboxPatch((x, 9.2 + k * 1.55), 8.4, 1.05, boxstyle="round,pad=0,rounding_size=0.3", fc=M1, alpha=0.75 - k * 0.12, ec="none"))
-a.text(45.6, 15.3, "2초", fontsize=7, color=M1, ha="left")
-a.annotate("", (36.1, 8.6), (33.5, 8.6), arrowprops=dict(arrowstyle="<|-|>", lw=0.7, color=GRAY, mutation_scale=6))
-a.text(36.6, 8.6, "0.5초", ha="left", va="center", fontsize=6.6, color=GRAY)
-arrow(52.2, 53.3)
-# ③ 특징 칩 3개
-for k, (t1, n, col) in enumerate((("시간", "7", "#3d5a80"), ("주파수", "7", "#5c8db8"), ("기준선", "3", "#a0522d"))):
-    y = 14.2 - k * 4.6
-    a.add_patch(FancyBboxPatch((54.3, y - 1.6), 14.8, 3.2, boxstyle="round,pad=0,rounding_size=0.6", fc=col, ec="none", alpha=0.9))
-    a.text(57.2, y, t1, va="center", fontsize=7.8, color="white", fontweight="bold")
-    a.text(67.6, y, n, va="center", ha="right", fontsize=11, color="white", fontweight="bold")
-arrow(69.8, 71.3)
-# ④ 모델 두 개
-for k, t1 in enumerate(("SVM", "랜덤\n포레스트")):
-    y = 13.0 - k * 6.4
-    a.add_patch(FancyBboxPatch((72.2, y - 2.3), 11.0, 4.6, boxstyle="round,pad=0,rounding_size=0.8", fc="white", ec=M1, lw=1.2))
-    a.text(77.7, y, t1, ha="center", va="center", fontsize=8.2, fontweight="bold", color=M1, linespacing=1.1)
-arrow(83.8, 85.3)
-# ⑤ 균형 정확도
-a.add_patch(FancyBboxPatch((86.2, 6.0), 13.2, 8.0, boxstyle="round,pad=0,rounding_size=0.8", fc="white", ec="#9aa7b4", lw=0.9))
-a.text(92.8, 12.3, "균형 정확도", ha="center", va="center", fontsize=7.8, fontweight="bold")
-for k, (h, c) in enumerate(((0.9, M1), (0.7, "#d4a017"))):
-    a.add_patch(FancyBboxPatch((88.0 + k * 3.0, 7.2), 2.0, 3.6 * h, boxstyle="square,pad=0", fc=c, ec="none"))
-a.text(95.0, 8.8, "두 부류\n평균", fontsize=6.8, color=GRAY, va="center")
+fig = plt.figure(figsize=(10, 6.2), dpi=300)
+# (가) 평가 방식 — 실제 콘센트 기록 위에 학습/평가 구간을 칠해 1회·2회를 보여 줌
+import sys as _s; _s.path.insert(0, os.path.dirname(__file__))
+import touch1117_ml as T
+ta, ma = T.series("자극_콘센트_20261117.csv"); za = np.median(ma)
+sa = [189.28 + 30 * k for k in range(9)]
+TRC, TEC, YEL = "#cfe0f3", "#fde3cf", "#e0a800"
+fig.text(0.01, 0.985, "(가) 학습·평가 방식", fontsize=10, fontweight="bold", va="top")
+for r, (lab, tr, te) in enumerate((("1회", (0, 310), (310, 600)), ("2회", (310, 600), (0, 310)))):
+    a = fig.add_axes([0.07, 0.80 - r * 0.13, 0.55, 0.10])
+    a.axvspan(*tr, color=TRC, lw=0); a.axvspan(*te, color=TEC, lw=0)
+    for s_ in sa: a.axvline(s_, color=YEL, lw=0.9)
+    a.plot(ta, ma - za, color=INK, lw=0.35)
+    a.set_xlim(0, 600); a.set_ylim(-40, 175); a.set_yticks([]); a.set_xticks([] if r == 0 else [0, 100, 200, 300, 400, 500, 600])
+    if r == 1: a.set_xlabel("콘센트 전원 기록 (초)", fontsize=8)
+    a.text(-12, 65, lab, ha="right", va="center", fontsize=9.5, fontweight="bold")
+    a.text(sum(tr) / 2, 150, "학습", ha="center", va="top", fontsize=8.5, color="#2b5d8a", fontweight="bold")
+    a.text(sum(te) / 2, 150, "평가", ha="center", va="top", fontsize=8.5, color="#b5651d", fontweight="bold")
+p_ = fig.add_axes([0.65, 0.66, 0.34, 0.27]); p_.axis("off"); p_.set_xlim(0, 10); p_.set_ylim(0, 10)
+chips = ["2초씩 자르기 (0.5초씩 밀며)", "창마다 특징 17개 계산", "SVM · 랜덤 포레스트 학습", "평가 구간 창을 접촉 / 비접촉 판정"]
+for k, t_ in enumerate(chips):
+    y = 9.0 - k * 2.5
+    p_.add_patch(FancyBboxPatch((0.3, y - 0.8), 9.4, 1.6, boxstyle="round,pad=0,rounding_size=0.4", fc="#eef2f6", ec="#9aa7b4", lw=0.7))
+    p_.text(5, y, t_, ha="center", va="center", fontsize=7.8)
+    if k < 3: p_.annotate("", (5, y - 1.7), (5, y - 0.85), arrowprops=dict(arrowstyle="-|>", lw=0.9, color=INK, mutation_scale=7))
+fig.text(0.07, 0.575, "노란 선 = 잎을 잡은 시각     파란 바탕 = 학습에 쓴 구간     주황 바탕 = 평가에 쓴 구간(모델이 처음 보는 구간)", fontsize=7.4, color=GRAY)
 
 # (나) 콘센트 기록 평가
-b = fig.add_axes([0.07, 0.16, 0.38, 0.38])
+b = fig.add_axes([0.07, 0.10, 0.38, 0.40])
 labs = ["랜덤 포레스트\n(특징 추출)", "SVM\n(특징 추출)"]
 fwd = [98.7, 99.8]; bwd = [95.5, 95.5]
 xs = np.arange(2); w = 0.32
@@ -86,7 +57,7 @@ from matplotlib.patches import Patch
 b.legend(handles=[Patch(fc="#888888", label="앞 절반 학습 → 뒤 절반 평가"), Patch(fc="#888888", alpha=0.5, hatch="///", ec="white", label="뒤 절반 학습 → 앞 절반 평가")],
          fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2, frameon=False)
 # (다) 전원별: 잎 만진 창을 접촉으로 판정한 비율(콘센트 = 평가 두 방향 합, 배터리 = 콘센트 전체로 학습한 모델 적용)
-c = fig.add_axes([0.60, 0.16, 0.38, 0.38])
+c = fig.add_axes([0.60, 0.10, 0.38, 0.40])
 grp = ["콘센트 전원\n(평가 창)", "보조배터리 전원\n(같은 모델 적용)"]
 rfv = [68 / 72, 0 / 80]; svv = [69 / 72, 0 / 80]; lab_rf = ["68/72", "0/80"]; lab_sv = ["69/72", "0/80"]
 xs2 = np.arange(2); w2 = 0.32
