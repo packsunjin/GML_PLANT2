@@ -285,6 +285,8 @@ for p in _top[_b0:]:
     if not "".join(x.text or "" for x in p.iter(Q("t"))).strip() and p.find(".//" + Q("tbl")) is None and p.find(".//" + Q("pic")) is None:
         ts = list(p.iter(Q("t")))
         if ts: ts[0].text = " "
+from table_plain_1119 import apply as _plain
+print("표 칸 바꿈", _plain(d.root, Q))
 if os.environ.get("NOPIC"):   # 그림 없는 판(캡션만) — 사용자가 한글에서 그림을 직접 넣는다
     for p in [p for p in d.root if p.tag == Q("p") and p.find(".//" + Q("pic")) is not None]:
         d.root.remove(p)
