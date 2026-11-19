@@ -285,6 +285,9 @@ for p in _top[_b0:]:
     if not "".join(x.text or "" for x in p.iter(Q("t"))).strip() and p.find(".//" + Q("tbl")) is None and p.find(".//" + Q("pic")) is None:
         ts = list(p.iter(Q("t")))
         if ts: ts[0].text = " "
+# 표4 "누르기 자극 2회차" 줄은 지운다(사용자 11-19)
+_ix = [i for i, p in enumerate(d.P) if "".join(x.text or "" for x in p.iter(Q("t"))).strip() == "누르기 자극 2회차"]
+assert len(_ix) == 1; d.delete_row(_ix[0])
 from table_plain_1119 import apply as _plain
 print("표 칸 바꿈", _plain(d.root, Q))
 if os.environ.get("NOPIC"):   # 그림 없는 판(캡션만) — 사용자가 한글에서 그림을 직접 넣는다
