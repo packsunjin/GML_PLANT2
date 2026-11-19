@@ -1,5 +1,5 @@
 """edit_1119.py — 11-17 판(GML_결과보고서_20261117.hwpx)에 11-19 최종 본문(최종보고서_본문_20261119.md)을 넣는다.
-그림·사진은 모두 빼고(캡션만 남김) 줄 배치 정보도 모두 지운다 — 사용자가 한글에서 JPG(report/보고서_그림_순서대로/)를 캡션 위에 넣는다.
+그림 12개를 캡션 바로 위에 글자처럼 취급으로 넣는다(report/보고서_그림_순서대로/ 의 JPG). 글 문단 줄 배치는 지우고 그림 문단만 세로 위치 0 으로 둔다.
 쓰는 법(저장소 루트): python3 report/stim/edit_1119.py report/GML_결과보고서_20261117.hwpx report/최종보고서_본문_20261119.md report/GML_결과보고서_최종_20261119.hwpx
 문단 번호는 20261117.hwpx 기준(hwpx_para.Doc.P).
 """
@@ -43,7 +43,7 @@ S(240, "패러데이 상자 이전에 한 예비 실험의 결과를")
 C(257, "계단 67건(약 70·320 mV), 손이 닿는 순간 생겨 닿아 있는 동안만 유지")
 C(258, "전원을 바꿔 원인 확인(Ⅳ장 6절)")
 C(273, M("그림3. (가) 예비 1단계")); C(275, M("그림3(가)의 세로축"))
-d.insert_after(275, 283, M("사진4. 수돗물에 담가"))
+cap_p4 = d.insert_after(275, 283, M("사진4. 수돗물에 담가"))
 C(277, "2. 예비 실험의 손 접촉 계단"); S(278, "예비 3단계에서 점퍼선 핀 두 개를"); d.delete(279)
 S(281, "은선 두 가닥을 1 cm 간격으로"); C(283, M("사진5. 물에 담가"))
 # Ⅳ-4·5
@@ -56,9 +56,9 @@ C(296, "6. 전원별 손 접촉 실험과 손 접촉 감지 모델")
 S(297, "예비 실험의 손 접촉 계단(Ⅳ장 2절)이")
 ld = lead(297)
 d.insert_after(297, 297, ld + M("보조배터리 전원에서는 잎을 10번"))
-d.insert_after(297, 294, M("그림5. 전원별 손 접촉"))
+cap_f5 = d.insert_after(297, 294, M("그림5. 전원별 손 접촉"))
 d.insert_after(297, 297, ld + M("콘센트 전원 기록으로 손 접촉 감지 모델을"))
-d.insert_after(297, 294, M("그림6. 손 접촉 감지 모델"))
+cap_f6 = d.insert_after(297, 294, M("그림6. 손 접촉 감지 모델"))
 d.insert_after(298, 290, ld + "측정 대상별 판정을 표5에 정리했다.")
 # 표5 (행 순서: 측정 회로, 물 공급 중단, 자극 반응, 상용전원 잡음, 손 접촉)
 C(309, "4.0~4.6일째 밤 14.5시간 기준선 243~247 mV로 평평. 정상 기록은 잡음이 약 47배 커서 같은 조건에서 비교하지 못함 (Ⅳ장 5절)")
@@ -83,11 +83,51 @@ C(382, M("본 실험 회로와 조립 순서는"))
 S(420, "웹 대시보드의 학습 기본값은")
 C(424, M("· 같은 ADC를 두 프로그램이")); d.delete(425)
 d.insert_after(426, 426, M("· 자극 실험은 전원을 기록해"))
-# 그림 빼기(캡션은 남김), 줄 배치 모두 지우기
-for i in (143, 160, 191, 194, 196, 272, 282, 293, 347):
+# 그림: 있던 9개는 새 JPG 로 바꾸고, 3개(사진4·그림5·그림6)는 그림 문단을 복사해 캡션 바로 위에 넣는다(글자처럼 취급 그대로).
+import copy, random
+HC = "http://www.hancom.co.kr/hwpml/2011/core"
+G = os.path.join(os.path.dirname(dst), "보고서_그림_순서대로")
+F = {n[:2]: os.path.join(G, n) for n in os.listdir(G) if n.endswith(".jpg")}
+def ref(i):
+    return d.P[i].find(".//" + Q("pic")).find(".//{%s}img" % HC).get("binaryItemIDRef")
+for i, k in ((143, "01"), (160, "02"), (191, "03"), (194, "04"), (196, "05"), (272, "06"), (282, "08"), (293, "09"), (347, "12")):
     assert d.P[i].find(".//" + Q("pic")) is not None
-    d.delete(i)
+    old = [n for n in d.zin.namelist() if n.startswith("BinData/" + ref(i) + ".")][0]
+    src_img = F[k]
+    if old.upper().endswith(".PNG"):          # 파일 이름·형식을 맞춘다(PNG 자리에는 PNG)
+        from PIL import Image
+        src_img = os.path.join(os.path.dirname(dst), "_tmp_%s.png" % k); Image.open(F[k]).save(src_img)
+    d.repic(ref(i), src_img)
+d.new_bins = {}
+def pic_before(cap, k, n):
+    pp = copy.deepcopy(d.P[272]); pp.set("id", "0")
+    pic = pp.find(".//" + Q("pic")); pic.set("id", str(random.randint(10**9, 2 * 10**9)))
+    if pic.get("instid"): pic.set("instid", str(random.randint(10**8, 9 * 10**8)))
+    r = "image%d" % n
+    pic.find(".//{%s}img" % HC).set("binaryItemIDRef", r)
+    cap.addprevious(pp)
+    d.new_bins["BinData/%s.JPEG" % r] = (r, open(F[k], "rb").read(), "image/jpeg")
+    from PIL import Image
+    wpx, hpx = Image.open(F[k]).size
+    w = int(pic.find(Q("sz")).get("width")); h = round(w * hpx / wpx)
+    for tag in ("sz", "curSz", "orgSz"):
+        e = pic.find(Q(tag))
+        if e is not None: e.set("width", str(w)); e.set("height", str(h))
+    for e in pic.iter("{%s}pt2" % HC): e.set("x", str(w)); e.set("y", str(h))
+    for e in pic.iter("{%s}pt3" % HC): e.set("y", str(h))
+    c = pic.find(Q("imgClip"))
+    if c is not None: c.set("right", str(wpx * 75)); c.set("bottom", str(hpx * 75))
+    for ls in pp.iter(Q("lineseg")):
+        ls.set("vertsize", str(h)); ls.set("textheight", str(h)); ls.set("baseline", str(round(h * 0.85)))
+pic_before(cap_p4, "07", 21); pic_before(cap_f5, "10", 22); pic_before(cap_f6, "11", 23)
+# 줄 배치: 글 문단은 모두 지우고(한글이 다시 계산), 그림 문단은 남기되 세로 위치 0(그림이 보이게 — 11-17 C판 방식)
 for p in d.root.iter(Q("p")):
-    for s in p.findall(Q("linesegarray")):
-        p.remove(s)
+    has_pic = p.find(".//" + Q("pic")) is not None
+    for sa in p.findall(Q("linesegarray")):
+        if has_pic:
+            for ls in sa.findall(Q("lineseg")): ls.set("vertpos", "0")
+        else:
+            p.remove(sa)
 d.save(dst); print("saved", dst)
+for n in os.listdir(os.path.dirname(dst)):
+    if n.startswith("_tmp_") and n.endswith(".png"): os.remove(os.path.join(os.path.dirname(dst), n))
