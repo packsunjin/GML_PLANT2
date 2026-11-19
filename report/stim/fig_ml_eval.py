@@ -82,11 +82,13 @@ r1 = b.bar(xs - w / 2, fwd, w, color=M1)
 r2 = b.bar(xs + w / 2, bwd, w, color=M1, alpha=0.5, hatch="///", edgecolor="white")
 for r in list(r1) + list(r2):
     b.text(r.get_x() + r.get_width() / 2, r.get_height() + 1.2, f"{r.get_height():g}", ha="center", fontsize=7)
+for r, t_ in [(x_, "1회") for x_ in r1] + [(x_, "2회") for x_ in r2]:
+    b.text(r.get_x() + r.get_width() / 2, 4, t_, ha="center", fontsize=7.5, color="white" if t_ == "1회" else INK, fontweight="bold")
 b.axhline(50, color=GRAY, ls="--", lw=0.8); b.text(-0.58, 51.5, "우연 50 %", ha="left", fontsize=7, color=GRAY, bbox=dict(fc="white", ec="none", pad=0.5))
 b.set_xticks(xs); b.set_xticklabels(labs, fontsize=7.8); b.set_ylim(0, 112); b.set_xlim(-0.55, 1.55); b.set_ylabel("균형 정확도 (%)")
 b.set_title("(나) 콘센트 전원 기록 — 손 접촉 감지 균형 정확도", loc="left", fontsize=9.2)
 from matplotlib.patches import Patch
-b.legend(handles=[Patch(fc="#888888", label="앞 절반 학습 → 뒤 절반 평가"), Patch(fc="#888888", alpha=0.5, hatch="///", ec="white", label="뒤 절반 학습 → 앞 절반 평가")],
+b.legend(handles=[Patch(fc="#888888", label="1회 (앞 절반 학습 → 뒤 절반 평가)"), Patch(fc="#888888", alpha=0.5, hatch="///", ec="white", label="2회 (뒤 절반 학습 → 앞 절반 평가)")],
          fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2, frameon=False)
 # (다) 전원별: 잎 만진 창을 접촉으로 판정한 비율(콘센트 = 평가 두 방향 합, 배터리 = 콘센트 전체로 학습한 모델 적용)
 c = fig.add_axes([0.60, 0.16, 0.38, 0.38])
