@@ -1,35 +1,51 @@
-"""11-17 손 접촉: 보조배터리 vs 콘센트 전원. 잡은 시각 뒤 10초 최대 상승(앞 10초 중앙값 기준, 0.1초 평균).
-숫자는 파이에서 계산한 표(자극.csv, 자극_3.csv) 그대로."""
+"""fig_touch_power.py — 11-17 손 접촉, 전원별 비교(원본 CSV).
+자료: main 의 data/faraday/자극_배터리_20261117.csv, 자극_콘센트_20261117.csv
+만진 시각(파일 초): 배터리 129.75+30k(10번), 콘센트 189.28+30k(9번; 129.28 은 반응 없어 표시만)
+쓰는 법: python3 report/stim/fig_touch_power.py <csv 폴더>
+"""
+import sys, os
+import numpy as np, pandas as pd
 import matplotlib; matplotlib.use("Agg")
-import matplotlib.pyplot as plt, numpy as np
+import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
-import os
-for f in os.listdir("/usr/share/fonts/opentype/noto/"):
-    if "CJK" in f: fm.fontManager.addfont("/usr/share/fonts/opentype/noto/" + f)
+for f in ("NotoSansCJK-Regular.ttc", "NotoSansCJK-Bold.ttc"):
+    fm.fontManager.addfont("/usr/share/fonts/opentype/noto/" + f)
 plt.rcParams.update({"font.family": "Noto Sans CJK JP", "axes.unicode_minus": False, "font.size": 9})
-bat_t = [5.05, 2.18, 2.92, 3.30, 2.33, 2.98, 2.73, 2.59, 3.31, 3.34]
-bat_c = [2.42, 2.19, 4.09, 4.15, 3.82, 2.15, 5.74, 3.87, 6.44, 3.39]
-ac_t = [138.38, 141.98, 144.74, 149.08, 149.16, 144.17, 146.89, 155.43, 147.33]
-ac_c = [4.48, 7.34, 6.52, 4.71, 4.34, 4.56, 7.03, 7.51, 5.12]
-BLUE, GRAY, INK = "#1f77b4", "#9a9a9a", "#222222"
-fig, ax = plt.subplots(figsize=(6.4, 3.4), dpi=300)
-groups = [("보조배터리\n잎 만짐", bat_t, BLUE), ("보조배터리\n안 만짐", bat_c, GRAY),
-          ("콘센트\n잎 만짐", ac_t, BLUE), ("콘센트\n안 만짐", ac_c, GRAY)]
-rng = np.random.default_rng(0)
-for i, (lab, v, c) in enumerate(groups):
-    x = i + rng.uniform(-0.12, 0.12, len(v))
-    ax.scatter(x, v, s=22, color=c, edgecolor="white", linewidth=0.5, zorder=3)
-    m = np.median(v)
-    ax.plot([i - 0.25, i + 0.25], [m, m], color=INK, lw=1.4, zorder=4)
-    ax.text(i + 0.3, m, f"{m:.0f} mV" if m > 20 else f"{m:.1f} mV", va="center", fontsize=8, color=INK)
-ax.set_xticks(range(4)); ax.set_xticklabels([g[0] for g in groups])
-ax.set_ylabel("만진 뒤 10초 최대 상승 (mV)")
-ax.set_ylim(0, 170); ax.set_xlim(-0.6, 3.9)
-ax.grid(axis="y", color="#e5e5e5", lw=0.6); ax.set_axisbelow(True)
-ax.axvline(1.5, color="#cccccc", lw=0.8)
-ax.text(0.5, 160, f"만짐 {len(bat_t)}번 · 안 만짐 {len(bat_c)}곳", ha="center", fontsize=8, color=GRAY)
-ax.text(2.5, 160, f"만짐 {len(ac_t)}번 · 안 만짐 {len(ac_c)}곳", ha="center", fontsize=8, color=GRAY)
-fig.tight_layout()
+D = sys.argv[1] if len(sys.argv) > 1 else "data/faraday"
+BLUE, RED, GRAY, INK = "#1f77b4", "#c0504d", "#9a9a9a", "#1d1d1d"
+
+def load(n):
+    d = pd.read_csv(os.path.join(D, n)); t = d.timestamp_sec.values; v = d.voltage.values * 1000
+    b = np.floor(t / 0.1).astype(int); k = b.max() + 1
+    m = np.bincount(b, v, k) / np.maximum(np.bincount(b, None, k), 1)
+    return np.arange(k) * 0.1 + 0.05, m
+
+runs = [("보조배터리 전원", "자극_배터리_20261117.csv", [129.75 + 30 * k for k in range(10)], BLUE),
+        ("콘센트 전원", "자극_콘센트_20261117.csv", [189.28 + 30 * k for k in range(9)], RED)]
+fig = plt.figure(figsize=(7.2, 4.6), dpi=300)
+gs = fig.add_gridspec(2, 2, width_ratios=[2.3, 1], hspace=0.55, wspace=0.28)
+for r, (name, fn, touches, col) in enumerate(runs):
+    t, m = load(fn)
+    base = np.median(m)
+    a = fig.add_subplot(gs[r, 0])
+    for x in touches:
+        a.axvspan(x, x + 2, color="#f2c94c", alpha=0.55, lw=0)
+    a.plot(t, m - base, color=col, lw=0.5)
+    a.set_xlim(0, 600); a.set_ylim(-40, 170)
+    a.set_ylabel("전압 (mV)"); a.grid(lw=0.3, color="#e3e3e3")
+    a.set_title(f"({'가나'[r]}) {name} — 600초 기록, 노란 띠 = 잎을 잡으라고 신호한 2초", loc="left", fontsize=9)
+    if r == 1: a.set_xlabel("시간 (초)")
+    b = fig.add_subplot(gs[r, 1])
+    seg = []
+    for x in touches:
+        k = (t >= x - 5) & (t < x + 15)
+        y = m[k] - np.median(m[(t >= x - 10) & (t < x - 1)])
+        seg.append(y[:200]); b.plot(np.arange(len(y))[:200] * 0.1 - 5, y[:200], color=col, lw=0.5, alpha=0.45)
+    b.plot(np.arange(200) * 0.1 - 5, np.median(np.array(seg), 0), color=INK, lw=1.2)
+    b.axvspan(0, 2, color="#f2c94c", alpha=0.55, lw=0)
+    b.set_xlim(-5, 15); b.set_ylim(-40, 170); b.grid(lw=0.3, color="#e3e3e3")
+    b.set_title(f"신호 시각 기준 겹쳐 보기 ({len(touches)}번)", loc="left", fontsize=9)
+    if r == 1: b.set_xlabel("신호 뒤 시간 (초)")
 out = "report/보고서_그림_순서대로/12_그림7_전원별_손접촉.jpg"
 fig.savefig(out, bbox_inches="tight", pad_inches=0.03, facecolor="white", pil_kwargs={"quality": 95})
 print(out)
