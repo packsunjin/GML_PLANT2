@@ -141,6 +141,10 @@ for pic in d.root.iter(Q("pic")):
     pos.set("treatAsChar", "0"); pos.set("flowWithText", "1"); pos.set("allowOverlap", "0")
     pos.set("vertRelTo", "PARA"); pos.set("vertAlign", "TOP"); pos.set("vertOffset", "0")
     pos.set("horzRelTo", "COLUMN"); pos.set("horzAlign", "CENTER"); pos.set("horzOffset", "0")
+if os.environ.get("NOPIC"):   # 그림 없는 판(캡션만) — 사용자가 한글에서 그림을 직접 넣는다
+    for p in [p for p in d.root if p.tag == Q("p") and p.find(".//" + Q("pic")) is not None]:
+        d.root.remove(p)
+    d.new_bins = {}
 d.save(dst); print("saved", dst)
 for n in os.listdir(os.path.dirname(dst)):
     if n.startswith("_tmp_") and n.endswith(".png"): os.remove(os.path.join(os.path.dirname(dst), n))
