@@ -89,20 +89,20 @@ b.set_xticks(xs); b.set_xticklabels(labs, fontsize=7.8); b.set_ylim(0, 112); b.s
 b.set_title("(나) 콘센트 전원 기록 — 손 접촉 감지 균형 정확도", loc="left", fontsize=9.2)
 from matplotlib.patches import Patch
 b.legend(handles=[Patch(fc="#888888", label="1회 (앞 절반 학습 → 뒤 절반 평가)"), Patch(fc="#888888", alpha=0.5, hatch="///", ec="white", label="2회 (뒤 절반 학습 → 앞 절반 평가)")],
-         fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2, frameon=False)
+         fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.27), ncol=2, frameon=False)
 # (다) 전원별: 잎 만진 창을 접촉으로 판정한 비율(콘센트 = 평가 두 방향 합, 배터리 = 콘센트 전체로 학습한 모델 적용)
 c = fig.add_axes([0.60, 0.16, 0.38, 0.38])
-grp = ["콘센트 전원\n(평가 창)", "보조배터리 전원\n(같은 모델 적용)"]
+grp = ["콘센트 전원\n잎 잡은 조각 72개\n(1회·2회 평가 구간 합)", "보조배터리 전원\n잎 잡은 조각 80개\n(콘센트 기록으로 학습한 모델)"]
 rfv = [68 / 72, 0 / 80]; svv = [69 / 72, 0 / 80]; lab_rf = ["68/72", "0/80"]; lab_sv = ["69/72", "0/80"]
 xs2 = np.arange(2); w2 = 0.32
 q1 = c.bar(xs2 - w2 / 2, [100 * v for v in rfv], w2, color=M2, label="랜덤 포레스트")
 q2 = c.bar(xs2 + w2 / 2, [100 * v for v in svv], w2, color=M1, label="SVM")
 for r, t in zip(list(q1) + list(q2), lab_rf + lab_sv):
     c.text(r.get_x() + r.get_width() / 2, r.get_height() + 1.5, t, ha="center", fontsize=7)
-c.set_xticks(xs2); c.set_xticklabels(grp, fontsize=7.8); c.set_ylim(0, 112); c.set_xlim(-0.55, 1.55)
-c.set_ylabel("접촉으로 판정한 비율 (%)")
-c.set_title("(다) 잎을 만진 시각의 창 — 전원별", loc="left", fontsize=9.2)
-c.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2, frameon=False)
+c.set_xticks(xs2); c.set_xticklabels(grp, fontsize=7.4); c.set_ylim(0, 112); c.set_xlim(-0.55, 1.55)
+c.set_ylabel("'접촉'이라고 맞힌 비율 (%)")
+c.set_title("(다) 잎을 잡은 시각의 조각을 '접촉'이라고 맞힌 수", loc="left", fontsize=9.2)
+c.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.27), ncol=2, frameon=False)
 for x_ in (b, c):
     x_.grid(axis="y", lw=0.3, color="#e3e3e3"); x_.set_axisbelow(True)
     for s in ("top", "right"):
