@@ -158,9 +158,12 @@ for pic in ([] if os.environ.get("INLINE") else d.root.iter(Q("pic"))):
     pos.set("horzRelTo", "COLUMN"); pos.set("horzAlign", "CENTER"); pos.set("horzOffset", "0")
 # 그림 가로를 39902(양식 기준, 본문 폭의 약 83 %)로 줄인다 — 20쪽 안에 넣으려고(rhwp 로 21쪽 확인).
 W_FIG = 39902
+# 세로로 긴 사진은 더 좁게(20쪽 안에 넣으려고): 사진2·사진4·사진5 30000, 사진3 32000
+W_REF = {"image4": 30000, "image5": 32000, "image21": 30000, "image10": 30000}
 for pic in d.root.iter(Q("pic")):
     sz = pic.find(Q("sz")); w0 = int(sz.get("width")); h0 = int(sz.get("height"))
-    w, h = W_FIG, round(h0 * W_FIG / w0)
+    wt = W_REF.get(pic.find(".//{%s}img" % HC).get("binaryItemIDRef"), W_FIG)
+    w, h = wt, round(h0 * wt / w0)
     for tag in ("sz", "curSz", "orgSz"):
         e = pic.find(Q(tag))
         if e is not None: e.set("width", str(w)); e.set("height", str(h))
@@ -183,15 +186,64 @@ if os.environ.get("INLINE"):
         for c in list(run):
             if c.tag == Q("t"): run.remove(c)
         t = etree.SubElement(run, Q("t")); etree.SubElement(t, Q("lineBreak"))
+        run.set("charPrIDRef", "35")   # 그림 뒤 줄바꿈 글자 크기를 캡션(11pt)과 같게
         first = cap.find(Q("run"))
         first.addprevious(run)
         d.root.remove(pp)
     for p in d.root.iter(Q("p")):
         for sa in p.findall(Q("linesegarray")): p.remove(sa)
+# ── 줄 정리·양식(11-19 사용자 "줄 정리하고 양식에 맞춰서") ──
+def _txt(p): return "".join(x.text or "" for x in p.iter(Q("t")))
+def _obj(p): return p.find(".//" + Q("tbl")) is not None or p.find(".//" + Q("pic")) is not None
+top = [p for p in d.root if p.tag == Q("p")]
+body0 = [i for i, p in enumerate(top) if _txt(p).strip() == "Ⅰ. 서론"][-1]       # 목차 다음 본문 시작
+HEAD = re.compile(r"^\s*([ⅠⅡⅢⅣⅤ]\. |\d\. [^\d]|<참고문헌>|<부록>)")
+empty_model = next(p for p in top[body0:] if not _txt(p).strip() and not _obj(p))
+for i in range(body0, len(top)):
+    p = top[i]; t = _txt(p)
+    if HEAD.match(t) and len(t.strip()) < 45 and i > body0:
+        prev = p.getprevious()
+        if _txt(prev).strip() or _obj(prev):          # 장·절 제목 앞에는 빈 줄 하나
+            e = copy.deepcopy(empty_model); e.set("id", "0"); p.addprevious(e)
+# 빈 줄이 둘 이상 이어지면 하나만
+top = [p for p in d.root if p.tag == Q("p")]
+for a_, b_ in zip(top, top[1:]):
+    if a_.getparent() is not None and not _txt(a_).strip() and not _obj(a_) and not _txt(b_).strip() and not _obj(b_) \
+            and top.index(a_) > body0:
+        d.root.remove(a_)
+# 본문 문단 첫 칸: 공백 하나로 맞춘다(목록·제목·캡션·참고문헌·표 칸 제외)
+SKIP = re.compile(r"^\s*([ⅠⅡⅢⅣⅤ]\.|\d\. |[·①②③④⑤]|\[\d+\]|<|(표|그림|사진)\d+\.)")
+top = [p for p in d.root if p.tag == Q("p")]
+body0 = [i for i, p in enumerate(top) if _txt(p).strip() == "Ⅰ. 서론"][-1]
+for p in top[body0:]:
+    t = _txt(p)
+    if not t.strip() or _obj(p) or SKIP.match(t) or p.get("paraPrIDRef") == "19": continue
+    ts = [x for x in p.iter(Q("t")) if x.text]
+    first = ts[0]; first.text = " " + first.text.lstrip(" ")
+# 양식 안내 글 지우기: Ⅲ 제목의 "(설계, 방법, 내용 등 서술)", 표지의 제출 안내 줄
+for p in d.root.iter(Q("p")):
+    for r in p.findall(Q("run")):
+        tt = "".join(x.text or "" for x in r.iter(Q("t")))
+        if tt.strip() in ("(설계, 방법, 내용 등 서술)",):
+            p.remove(r)
+for p in list(d.root.iter(Q("p"))):
+    if "추후 공문 안내" in _txt(p) and "20페이지" in _txt(p):
+        for r in p.findall(Q("run")):
+            for x in r.findall(Q("t")): r.remove(x)
 if os.environ.get("NOPIC"):   # 그림 없는 판(캡션만) — 사용자가 한글에서 그림을 직접 넣는다
     for p in [p for p in d.root if p.tag == Q("p") and p.find(".//" + Q("pic")) is not None]:
         d.root.remove(p)
     d.new_bins = {}
-d.save(dst); print("saved", dst)
+d.save(dst)
+import zipfile as _z
+_zi = _z.ZipFile(dst); _items = [(it, _zi.read(it.filename)) for it in _zi.infolist()]; _zi.close()
+with _z.ZipFile(dst, "w") as _zo:
+    for it, data in _items:
+        if it.filename == "Contents/header.xml":
+            h = data.decode("utf-8")
+            h = re.sub(r'(<hh:paraPr id="19".*?<hh:breakSetting [^>]*?)keepLines="0"', r'\1keepLines="1"', h, count=1, flags=re.S)
+            data = h.encode("utf-8")
+        _zo.writestr(it, data, compress_type=_z.ZIP_STORED if it.filename == "mimetype" else _z.ZIP_DEFLATED)
+print("saved", dst)
 for n in os.listdir(os.path.dirname(dst)):
     if n.startswith("_tmp_") and n.endswith(".png"): os.remove(os.path.join(os.path.dirname(dst), n))
