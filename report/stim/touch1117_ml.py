@@ -16,7 +16,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import balanced_accuracy_score as bac
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 from feature_extraction import extract_features
-D = sys.argv[1] if len(sys.argv) > 1 else "data/faraday"
+D = os.environ.get("TOUCH_DIR") or (sys.argv[1] if len(sys.argv) > 1 else "data/faraday")
 FS = 10.0
 
 def series(fn):
@@ -43,23 +43,24 @@ def windows(t, m, sigs, skip=()):
 
 models = {"랜덤 포레스트": lambda: RandomForestClassifier(300, class_weight="balanced", random_state=0),
           "SVM": lambda: make_pipeline(StandardScaler(), SVC(C=10, class_weight="balanced"))}
-ta, ma = series("자극_콘센트_20261117.csv")
-sa = [189.28 + 30 * k for k in range(9)]
-Xa, ya, ca = windows(ta, ma, sa, skip=(129.28, 159.28))
-tb, mb = series("자극_배터리_20261117.csv")
-sb = [129.75 + 30 * k for k in range(10)]
-Xb, yb, cb = windows(tb, mb, sb)
-out = {"콘센트 창": [int((ya == 1).sum()), int((ya == 0).sum())], "배터리 창": [int((yb == 1).sum()), int((yb == 0).sum())]}
-front = ca < 310
-for name, mk in models.items():
-    r = {}
-    for tag, tr in (("앞→뒤", front), ("뒤→앞", ~front)):
-        m_ = mk().fit(Xa[tr], ya[tr]); p = m_.predict(Xa[~tr]); yt = ya[~tr]
-        r[tag] = {"균형정확도": round(100 * bac(yt, p), 1), "접촉 찾음": f"{int(((p == 1) & (yt == 1)).sum())}/{int((yt == 1).sum())}",
-                  "비접촉 맞힘": f"{int(((p == 0) & (yt == 0)).sum())}/{int((yt == 0).sum())}"}
-    m_ = mk().fit(Xa, ya); p = m_.predict(Xb)
-    r["배터리 기록에 적용"] = {"만진 시각 창을 접촉으로": f"{int(((p == 1) & (yb == 1)).sum())}/{int((yb == 1).sum())}",
-                        "안 만진 창을 접촉으로": f"{int(((p == 1) & (yb == 0)).sum())}/{int((yb == 0).sum())}"}
-    out[name] = r
-print(json.dumps(out, ensure_ascii=False, indent=1))
-json.dump(out, open(os.path.join(os.path.dirname(__file__), "touch1117_ml.json"), "w"), ensure_ascii=False, indent=1)
+if __name__ == "__main__":
+    ta, ma = series("자극_콘센트_20261117.csv")
+    sa = [189.28 + 30 * k for k in range(9)]
+    Xa, ya, ca = windows(ta, ma, sa, skip=(129.28, 159.28))
+    tb, mb = series("자극_배터리_20261117.csv")
+    sb = [129.75 + 30 * k for k in range(10)]
+    Xb, yb, cb = windows(tb, mb, sb)
+    out = {"콘센트 창": [int((ya == 1).sum()), int((ya == 0).sum())], "배터리 창": [int((yb == 1).sum()), int((yb == 0).sum())]}
+    front = ca < 310
+    for name, mk in models.items():
+        r = {}
+        for tag, tr in (("앞→뒤", front), ("뒤→앞", ~front)):
+            m_ = mk().fit(Xa[tr], ya[tr]); p = m_.predict(Xa[~tr]); yt = ya[~tr]
+            r[tag] = {"균형정확도": round(100 * bac(yt, p), 1), "접촉 찾음": f"{int(((p == 1) & (yt == 1)).sum())}/{int((yt == 1).sum())}",
+                      "비접촉 맞힘": f"{int(((p == 0) & (yt == 0)).sum())}/{int((yt == 0).sum())}"}
+        m_ = mk().fit(Xa, ya); p = m_.predict(Xb)
+        r["배터리 기록에 적용"] = {"만진 시각 창을 접촉으로": f"{int(((p == 1) & (yb == 1)).sum())}/{int((yb == 1).sum())}",
+                            "안 만진 창을 접촉으로": f"{int(((p == 1) & (yb == 0)).sum())}/{int((yb == 0).sum())}"}
+        out[name] = r
+    print(json.dumps(out, ensure_ascii=False, indent=1))
+    json.dump(out, open(os.path.join(os.path.dirname(__file__), "touch1117_ml.json"), "w"), ensure_ascii=False, indent=1)
