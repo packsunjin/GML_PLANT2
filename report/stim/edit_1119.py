@@ -159,7 +159,7 @@ for pic in ([] if os.environ.get("INLINE") else d.root.iter(Q("pic"))):
 # 그림 가로를 39902(양식 기준, 본문 폭의 약 83 %)로 줄인다 — 20쪽 안에 넣으려고(rhwp 로 21쪽 확인).
 W_FIG = 39902
 # 세로로 긴 사진은 더 좁게(20쪽 안에 넣으려고): 사진2·사진4·사진5 30000, 사진3 32000
-W_REF = {"image4": 30000, "image5": 32000, "image21": 30000, "image10": 30000}
+W_REF = {"image3": 36000, "image4": 28000, "image5": 30000, "image21": 28000, "image10": 28000}
 for pic in d.root.iter(Q("pic")):
     sz = pic.find(Q("sz")); w0 = int(sz.get("width")); h0 = int(sz.get("height"))
     wt = W_REF.get(pic.find(".//{%s}img" % HC).get("binaryItemIDRef"), W_FIG)
@@ -192,6 +192,10 @@ if os.environ.get("INLINE"):
         d.root.remove(pp)
     for p in d.root.iter(Q("p")):
         for sa in p.findall(Q("linesegarray")): p.remove(sa)
+# 표4 마지막 줄: 정상·자극은 다시 학습하지 않았고 손 접촉 기록으로 다시 학습했다(검토 11-19)
+for t in d.root.iter(Q("t")):
+    if t.text and t.text.strip() == "새 기록으로 다시 학습":
+        t.text = "손 접촉 기록으로 다시 학습(Ⅳ장 6절)"
 # ── 줄 정리·양식(11-19 사용자 "줄 정리하고 양식에 맞춰서") ──
 def _txt(p): return "".join(x.text or "" for x in p.iter(Q("t")))
 def _obj(p): return p.find(".//" + Q("tbl")) is not None or p.find(".//" + Q("pic")) is not None
