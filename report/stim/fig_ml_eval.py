@@ -26,25 +26,31 @@ def arrow(x0, x1, y=9.5):
     a.annotate("", (x1, y), (x0, y), arrowprops=dict(arrowstyle="-|>", lw=1.1, color=INK, mutation_scale=9))
 band(0, 31, "① 기록을 앞·뒤 절반으로 나누기"); band(32.5, 52, "② 2초씩 잘라 조각 만들기"); band(53.5, 70, "③ 조각마다 숫자 17개")
 band(71.5, 84, "④ 모델 학습"); band(85.5, 100, "⑤ 평가")
-# ① 콘센트 기록 600초: 만진 시각 9번, 앞 4번/뒤 5번
-L = 28.0
-a.add_patch(FancyBboxPatch((0.5, 10.8), L * 0.5 - 0.15, 2.6, boxstyle="round,pad=0,rounding_size=0.35", fc=M1, ec="none"))
-a.add_patch(FancyBboxPatch((0.5 + L * 0.5 + 0.15, 10.8), L * 0.5 - 0.15, 2.6, boxstyle="round,pad=0,rounding_size=0.35", fc=M1, alpha=0.28, ec="none"))
-a.text(0.5 + L * 0.25, 12.1, "학습", ha="center", va="center", fontsize=7.3, color="white", fontweight="bold")
-a.text(0.5 + L * 0.75, 12.1, "평가", ha="center", va="center", fontsize=7.3, color=INK, fontweight="bold")
-a.text(0.5, 15.2, "콘센트 전원 600초 · 잎 만짐 9번", fontsize=7.4, color=M1, va="center")
-a.annotate("", (8.6, 3.3), (22.6, 3.3), arrowprops=dict(arrowstyle="<|-|>", lw=0.9, color=GRAY, mutation_scale=8))
-a.text(15.6, 1.6, "앞·뒤를 바꿔 한 번 더", ha="center", fontsize=7, color=GRAY)
+# ① 1회·2회: 학습/평가 절반을 바꿔 두 번
+a.text(0.5, 16.0, "콘센트 전원 600초 · 잎 만짐 9번", fontsize=7.4, color=M1, va="center")
+W = 12.6
+for r, (lab, first, second) in enumerate((("1회", "학습", "평가"), ("2회", "평가", "학습"))):
+    y = 11.6 - r * 4.4
+    a.text(0.5, y, lab, va="center", fontsize=8, fontweight="bold")
+    for k, t_ in enumerate((first, second)):
+        x = 3.6 + k * (W + 0.3)
+        dark = t_ == "학습"
+        a.add_patch(FancyBboxPatch((x, y - 1.3), W, 2.6, boxstyle="round,pad=0,rounding_size=0.35", fc=M1, alpha=1 if dark else 0.28, ec="none"))
+        a.text(x + W / 2, y, t_ + (" (앞 절반)" if k == 0 else " (뒤 절반)"), ha="center", va="center", fontsize=7.1,
+               color="white" if dark else INK, fontweight="bold")
+a.text(16.5, 2.4, "평가 = 학습에 안 쓴 절반(모델이 처음 보는 부분)", ha="center", fontsize=6.8, color=GRAY)
 arrow(29.0, 32.3)
-# ② 신호 + 겹치는 창
-xx = np.linspace(0, 1, 400)
-a.plot(33 + 18.5 * xx, 6.0 + 1.1 * np.sin(xx * 34) * (0.6 + 0.4 * np.sin(xx * 5)), color="#4a4a4a", lw=0.9)
-for k in range(4):
-    x = 33.5 + k * 2.6
-    a.add_patch(FancyBboxPatch((x, 9.2 + k * 1.55), 8.4, 1.05, boxstyle="round,pad=0,rounding_size=0.3", fc=M1, alpha=0.75 - k * 0.12, ec="none"))
-a.text(45.6, 15.3, "조각 1개 = 2초", fontsize=7, color=M1, ha="left")
-a.annotate("", (36.1, 8.6), (33.5, 8.6), arrowprops=dict(arrowstyle="<|-|>", lw=0.7, color=GRAY, mutation_scale=6))
-a.text(36.6, 8.6, "0.5초씩 밀기", ha="left", va="center", fontsize=6.6, color=GRAY)
+# ② 2초 조각을 0.5초씩 옮기며 자르기
+xx = np.linspace(0, 1, 300)
+a.plot(33.3 + 17.5 * xx, 16.0 + 0.6 * np.sin(xx * 40) * (0.6 + 0.4 * np.sin(xx * 7)), color="#4a4a4a", lw=0.8)
+a.text(51.2, 16.0, "기록", fontsize=6.4, color=GRAY, va="center", ha="left")
+U = 3.3   # 1초 길이
+for k, lab in enumerate(("0~2초", "0.5~2.5초", "1~3초")):
+    x = 33.3 + k * 0.5 * U; y = 12.6 - k * 2.2
+    a.add_patch(FancyBboxPatch((x, y - 0.75), 2 * U, 1.5, boxstyle="round,pad=0,rounding_size=0.25", fc=M1, alpha=0.85 - k * 0.15, ec="none"))
+    a.text(x + 2 * U + 0.4, y, f"조각 {k + 1}: {lab}", fontsize=6.6, va="center")
+a.text(33.3 + 1.5 * U + 1.0, 5.6, "· · ·", fontsize=8, color=GRAY, ha="center", va="center")
+a.text(42.2, 3.0, "2초 조각을 0.5초씩 옮기며 자름", ha="center", fontsize=6.8, color=GRAY)
 arrow(52.2, 53.3)
 # ③ 특징 칩 3개
 for k, (t1, n, col) in enumerate((("시간 (전압 크기·흔들림)", "7", "#3d5a80"), ("주파수 (빠르기)", "7", "#5c8db8"), ("기준선 (높이·기울기)", "3", "#a0522d"))):
