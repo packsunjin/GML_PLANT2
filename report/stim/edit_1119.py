@@ -185,9 +185,18 @@ if os.environ.get("INLINE"):
         run = [r for r in pp.findall(Q("run")) if r.find(".//" + Q("pic")) is not None][0]
         pic = run.find(".//" + Q("pic"))
         pos = pic.find(Q("pos")); pos.set("treatAsChar", "1"); pos.set("flowWithText", "0")
+        pos.set("horzRelTo", "COLUMN"); pos.set("horzAlign", "CENTER")   # 한글에서 왼쪽에 붙어 나옴(11-19 사용자 화면)
         for c in list(run):
             if c.tag == Q("t"): run.remove(c)
         t = etree.SubElement(run, Q("t")); t.text = " "
+        # 그림·사진 캡션 뒤에 빈 줄 하나(Enter) — 다음 그림·본문과 띄운다(사용자 11-19)
+        if not "".join(x.text or "" for x in (cap.getnext().iter(Q("t")) if cap.getnext() is not None else [])).strip() \
+                and cap.getnext() is not None and cap.getnext().find(".//" + Q("tbl")) is None and cap.getnext().find(".//" + Q("pic")) is None:
+            pass                                               # 이미 빈 줄이 있음
+        else:
+            e = etree.Element(Q("p"), id="0", paraPrIDRef="0", styleIDRef="0", pageBreak="0", columnBreak="0", merged="0")
+            r_ = etree.SubElement(e, Q("run"), charPrIDRef="44"); etree.SubElement(r_, Q("t")).text = ""
+            cap.addnext(e)
         run.set("charPrIDRef", "35")
     for p in d.root.iter(Q("p")):
         for sa in p.findall(Q("linesegarray")): p.remove(sa)
