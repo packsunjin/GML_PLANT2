@@ -46,6 +46,6 @@ for r, (name, fn, touches, col) in enumerate(runs):
     b.set_xlim(-5, 15); b.set_ylim(-40, 170); b.grid(lw=0.3, color="#e3e3e3")
     b.set_title(f"신호 시각 기준 겹쳐 보기 ({len(touches)}번)", loc="left", fontsize=9)
     if r == 1: b.set_xlabel("신호 뒤 시간 (초)")
-out = "report/보고서_그림_순서대로/12_그림7_전원별_손접촉.jpg"
+out = "report/보고서_그림_순서대로/10_그림5_전원별_손접촉.jpg"
 fig.savefig(out, bbox_inches="tight", pad_inches=0.03, facecolor="white", pil_kwargs={"quality": 95})
 print(out)
