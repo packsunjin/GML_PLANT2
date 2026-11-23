@@ -1,5 +1,5 @@
 """poster_1119.py — 발표 포스터(양식 report/포스터양식_5-3_SWAI.hwpx)에 최종 보고서 내용을 넣는다 (2026-11-19).
-왼쪽 칸: Ⅰ·Ⅱ·Ⅲ, 오른쪽 칸: Ⅳ·Ⅴ. 본문 25pt 함초롬바탕(양식 charPr 7), 그림은 가운데(paraPr 20) 글자처럼 취급.
+왼쪽 칸: Ⅰ·Ⅱ·Ⅲ·Ⅳ(결과 1), 오른쪽 칸: Ⅳ(결과 2~4)·Ⅴ. 본문 25pt 함초롬바탕(양식 charPr 7), 그림은 가운데(paraPr 20) 글자처럼 취급.
 줄 배치 정보는 넣은 문단에 두지 않는다(한글이 계산). 글자 없는 문단은 한글이 그리지 않으므로 빈칸 한 글자를 둔다.
 쓰는 법(저장소 루트): python3 report/stim/poster_1119.py report/포스터양식_5-3_SWAI.hwpx report/발표포스터_20261119.hwpx
 """
@@ -45,7 +45,7 @@ lsl, rsl = left.find(".//" + Q("subList")), right.find(".//" + Q("subList"))
 bars = [p for p in lsl.findall(Q("p"))]                       # 막대 문단 5개
 assert len(bars) == 5 and "Ⅰ" in txt(bars[0]) and "Ⅴ" in txt(bars[4])
 for p in list(rsl): rsl.remove(p)                             # 오른쪽 칸 빈 문단
-for b in bars[3:]: lsl.remove(b); rsl.append(b)               # Ⅳ·Ⅴ 를 오른쪽으로
+for b in bars[4:]: lsl.remove(b); rsl.append(b)               # Ⅴ 만 오른쪽(Ⅳ 는 왼쪽 아래 결과 1 → 오른쪽 위 결과 2~4)
 for b in bars:                                                # 막대 문단: 줄 배치 지우고 빈칸 한 글자
     for sa in b.findall(Q("linesegarray")): b.remove(sa)
     last_t = b.findall(Q("run"))[-1].findall(Q("t"))[-1]; last_t.text = " "
@@ -86,11 +86,11 @@ def sec_img(name):
         Image.open(os.path.join(SEC, name + ".png")).convert("RGB").save(jp, quality=92)
     F[name] = jp
     return pic_para(name, W)
-# 왼쪽 칸: Ⅰ s1, Ⅱ s2, Ⅲ s3 / 오른쪽 칸: Ⅳ s4a(결과 1·2)·s4b(결과 3·4), Ⅴ s5
-for k, name in ((0, "s1"), (1, "s2"), (2, "s3"), (4, "s5")):
+# 왼쪽 칸: Ⅰ s1, Ⅱ s2, Ⅲ s3, Ⅳ s4a(결과 1) / 오른쪽 칸: s4b(결과 2~4, Ⅳ 이어짐), Ⅴ s5
+for k, name in ((0, "s1"), (1, "s2"), (2, "s3"), (3, "s4a"), (4, "s5")):
     e = sec_img(name); bars[k].addnext(e)
-    if k < 4: e.addnext(para(" "))
-e1 = sec_img("s4a"); bars[3].addnext(e1); e2 = sec_img("s4b"); e1.addnext(e2); e2.addnext(para(" "))
+    if k < 3: e.addnext(para(" "))
+e = sec_img("s4b"); bars[4].addprevious(e); bars[4].addprevious(para(" "))
 
 # 저장
 for n, ref, _ in new_bins:

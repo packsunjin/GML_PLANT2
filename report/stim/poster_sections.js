@@ -25,7 +25,7 @@ const S = {
        <tr><th>붓 접촉 반응</th><td>33.9 mV, 접촉 뒤 <b>늦게</b> 도착 (Degli Agosti, 2014)</td></tr>
        <tr><th>수분 스트레스</th><td>수 시간 이상 걸리는 느린 변화</td></tr>
        <tr><th>선행 연구 측정</th><td>1 cm 간격 전극 + 접지한 금속 상자 (de Toledo 외, 2024)</td></tr></table>
-       ${fig('01', '그림1. 식물 전기신호의 주파수 위치와 분석 범위')}`,
+       ${fig('01', '그림1. 식물 전기신호의 주파수 위치와 분석 범위', 78)}`,
   // Ⅲ. 연구방법
   s3: `${fig('02', '그림2. 측정 시스템 구성 — 두 전극의 전위 차이를 재는 DC 결합 측정계')}
        <table class="ms"><tr><th>측정</th><th>길이</th><th>본 것</th></tr>
@@ -37,27 +37,28 @@ const S = {
        <tr><td>물 공급 중단 4.0~4.6일째</td><td>14.5시간</td><td>기준선 · 잡음</td></tr>
        <tr><td>손 접촉 (콘센트 · 보조배터리)</td><td>600초 × 2</td><td>잡은 뒤 10초 변화, 감지 모델</td></tr></table>
        <div class="an"><b>분석</b> &nbsp;250 S/s 기록 · 잡음 = 대역 표준편차 · 60 Hz = 푸리에 진폭 ·
-       모델 = 2초 조각 → 특징 17개 → SVM · 랜덤 포레스트, 균형 정확도로 평가</div>
-       ${fig('03', '사진1. 본 실험 장치 — (가) 패러데이 상자, (나) 상자 밖 회로', 92)}
-       <div class="row"><figure><img src="${src('04')}"><figcaption><b>사진2.</b> 줄기에 꽂은 은선 전극</figcaption></figure>
-       <figure><img src="${src('05')}"><figcaption><b>사진3.</b> 측정 회로의 배선</figcaption></figure></div>`,
+       모델 = 2초 조각 → 특징 17개 → SVM · 랜덤 포레스트, 균형 정확도로 평가</div>`,
   // Ⅳ. 연구결과 (앞)
   s4a: card('1. 잡음은 회로가 아니라 전극과 전원선에서',
-         `<div class="nums">${num('59.20 → 0.02 mV', '전극 60분 표류 (점퍼선 핀 → 은선)')}${num('약 1/27', '60 Hz 잡음 (차폐 상자)')}</div>
-          ${fig('06', '그림3. 회로 영점과 전극 표류', 80)}
-          ${fig('P_차폐전원_잡음', '그림4. 차폐 상자 · 전원별 잡음 (120초 기록)', 80)}`) +
-       card('2. 정상 · 물 공급 중단: 비교하지 못함',
+         `<div class="nums">${num('59.20 → 0.02 mV', '전극 60분 표류 (점퍼선 핀 → 은선)')}${num('<span class="fr"><sup>1</sup><span>27</span></span>', '60 Hz 잡음 (상자 밖 → 차폐 상자 안)')}</div>
+          ${fig('06', '그림3. 회로 영점과 전극 표류', 78)}
+          ${fig('P_차폐전원_잡음', '그림4. 차폐 상자 · 전원별 잡음 (120초 기록)', 78)}`),
+  s4b: card('2. 정상 · 물 공급 중단: 비교하지 못함',
          `<p>기록한 날마다 잡음이 <b>약 47배</b> 달라 같은 조건에서 비교할 수 없었다.</p>
-          ${fig('09', '그림5. 날짜별 잡음 수준', 80)}`),
-  // Ⅳ. 연구결과 (뒤)
-  s4b: card('3. 손 접촉 감지 모델',
+          ${fig('09', '그림5. 날짜별 잡음 수준', 80)}`) +
+       card('3. 손 접촉 감지 모델',
          `<p>손이 잎에 닿을 때 생기는 전압 계단으로 손 접촉 감지 모델을 만들었다(콘센트 전원 기록).</p>
           <div class="pipe"><div>전압 기록</div><i>→</i><div>2초씩 자르기</div><i>→</i><div>특징 17개</div><i>→</i><div>SVM ·<br>랜덤 포레스트</div><i>→</i><div class="o">접촉 /<br>비접촉</div></div>
-          <div class="nums">${num('95.5~99.8 %', '균형 정확도 (앞·뒤 절반 바꿔 2회 평가)')}${num('9 / 9', '잎을 잡은 횟수 모두 찾음')}</div>`) +
+          ${fig('P_스펙트로그램', '그림6. 손 접촉 기록의 전압과 스펙트로그램 (노란 띠 · 점선 = 잎을 잡은 시각)')}
+          <table class="cmp"><tr><th>모델 입력</th><th>SVM</th><th>랜덤 포레스트</th></tr>
+          <tr><td>특징 추출 (17개)</td><td><b>99.8 · 95.5 %</b></td><td><b>98.7 · 95.5 %</b></td></tr>
+          <tr><td>스펙트로그램 (65 × 31)</td><td>97.4 · 90.8 %</td><td>98.6 · 91.6 %</td></tr></table>
+          <p class="note">균형 정확도, 앞·뒤 절반을 바꿔 2회 평가 · 두 방식 모두 잎을 잡은 9번을 찾았다.</p>`) +
        card('4. 정말 식물 신호일까? 전원을 바꿔 확인',
          `<p>식물 · 전극은 그대로 두고 라즈베리파이 전원만 보조배터리로 바꿨다.</p>
           <div class="nums">${num('9 / 9', '콘센트 — 잡을 때마다 약 140 mV 계단')}${num('0 / 10', '보조배터리 — 잡아도 변화 없음')}${num('0 / 80', '보조배터리 — 모델이 찾은 접촉')}</div>
-          ${fig('P_모델판정_전원별', '그림6. 같은 모델의 판정 — (가) 콘센트, (나) 보조배터리', 82)}
+          ${fig('P_모델판정_전원별', '그림7. 같은 모델(특징 추출)의 판정 — (가) 콘센트, (나) 보조배터리', 80)}
+          <p class="note">스펙트로그램 SVM은 잡음 수준이 다른 보조배터리 기록 전체를 '접촉'으로 판정했다(랜덤 포레스트는 0 / 80).</p>
           <p class="why">손 접촉 계단은 식물 반응이 아니라 <b>사람 몸과 콘센트 전원 사이의 전기 경로</b>였다. 정확도가 높아도 무엇을 감지하는지는 대조 실험으로 확인해야 한다.</p>`),
   // Ⅴ. 결론 및 제언
   s5: `<ul><li>측정을 제한하는 것은 회로가 아니라 <b>전극 표류와 바깥 전기 잡음</b>이며, 둘 다 저가 부품으로 줄일 수 있었다.</li>
@@ -82,6 +83,9 @@ figcaption{font-size:25px;margin-top:6px;line-height:1.35;color:#333} figcaption
 .num .v{font-size:40px;font-weight:700;color:#7a4a17;line-height:1.2}.num .l{font-size:23px;color:#444;line-height:1.3;margin-top:4px}
 .why{font-size:26px;color:#444;background:#faf7f2;border-left:6px solid #905720;padding:8px 12px}
 ul{margin:0;padding-left:38px} li{margin-bottom:10px}
+.fr{display:inline-flex;flex-direction:column;align-items:center;line-height:1;vertical-align:middle;font-size:38px}.fr sup{border-bottom:4px solid #7a4a17;padding:0 10px 3px;vertical-align:baseline;font-size:38px}.fr span{padding-top:2px}
+table.cmp{width:100%;border-collapse:collapse;margin:4px 0 6px;font-size:25px;text-align:center}.cmp th{background:#905720;color:#fff;padding:5px}.cmp td{padding:5px;border-bottom:1px solid #e2d6c6}.cmp td:first-child{text-align:left}
+.note{font-size:23px;color:#555;margin:2px 0 10px}
 table.ms{width:100%;border-collapse:collapse;margin:6px 0 10px;font-size:25px}.ms th{background:#905720;color:#fff;padding:5px 8px;font-weight:700}
 .ms td{padding:5px 8px;border-bottom:1px solid #e2d6c6}.row{display:flex;gap:16px;align-items:flex-end}.row figure{flex:1;margin:6px 0 8px}.row img{width:100%;height:300px;object-fit:contain}
 .ms td:nth-child(2){text-align:center;white-space:nowrap}
