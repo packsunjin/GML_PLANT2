@@ -6,7 +6,12 @@ const fs = require('fs'), path = require('path');
 const [G, OUT] = process.argv.slice(2);
 fs.mkdirSync(OUT, { recursive: true });
 const PF = path.join(path.dirname(G), 'poster_fig');
-const src = k => 'data:image/jpeg;base64,' + (k.startsWith('P_') ? fs.readFileSync(path.join(PF, k + '.jpg')) : fs.readFileSync(path.join(G, fs.readdirSync(G).find(n => n.startsWith(k))))).toString('base64');
+const figFile = k => k.startsWith('P_') ? path.join(PF, k + '.jpg') : path.join(G, fs.readdirSync(G).find(n => n.startsWith(k)));
+// EXPORT=<폴더>: 편집기(아티팩트)용으로 절 HTML 과 CSS 를 JSON 으로 내보낸다(그림은 fig/<키>.jpg 상대 경로).
+// OVERRIDE=<json>: 편집기에서 저장한 절 HTML({s1:..}) 로 S 를 바꿔 그린다(fig/<키>.jpg 를 원본 그림으로 바꿈).
+const EXPORT = process.env.EXPORT, OVERRIDE = process.env.OVERRIDE;
+const src = k => EXPORT ? (fs.mkdirSync(path.join(EXPORT, 'fig'), { recursive: true }), fs.copyFileSync(figFile(k), path.join(EXPORT, 'fig', k + '.jpg')), 'fig/' + k + '.jpg')
+  : 'data:image/jpeg;base64,' + fs.readFileSync(figFile(k)).toString('base64');
 const cap = c => { const [n, ...r] = c.split(' '); return `<figcaption><b>${n}</b> ${r.join(' ')}</figcaption>`; };
 const fig = (k, c, w = 100) => `<figure><img src="${src(k)}" style="width:${w}%">${cap(c)}</figure>`;
 const num = (v, l) => `<div class="num"><div class="v">${v}</div><div class="l">${l}</div></div>`;
@@ -96,6 +101,12 @@ table.ms{width:100%;border-collapse:collapse;margin:6px 0 10px;font-size:25px}.m
 .an{font-size:24px;background:#f6efe5;border-radius:10px;padding:8px 12px;margin:0 0 12px;line-height:1.4}
 .pipe{display:flex;align-items:center;gap:6px;margin:6px 0 12px}.pipe div{flex:1;background:#f6efe5;border-radius:10px;padding:8px 4px;text-align:center;font-size:23px;line-height:1.25}
 .pipe i{font-style:normal;color:#905720;font-weight:700}.pipe .o{background:#905720;color:#fff;font-weight:700}`;
+if (OVERRIDE) {
+  const o = JSON.parse(fs.readFileSync(OVERRIDE, 'utf8'));
+  for (const k of Object.keys(S)) if (typeof o[k] === 'string' && o[k].trim())
+    S[k] = o[k].replace(/src="fig\/([^"]+)\.jpg"/g, (m, key) => `src="${src(key)}"`);
+}
+if (EXPORT) { fs.writeFileSync(path.join(EXPORT, 'sections.json'), JSON.stringify({ S, CSS })); console.log('exported', Object.keys(S).length); process.exit(0); }
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1060, height: 800 }, deviceScaleFactor: 3 });
   for (const [k, html] of Object.entries(S)) {

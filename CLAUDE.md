@@ -323,3 +323,4 @@ docs/HISTORY.md       2026-11-05 까지의 이 파일 전문
 - 11-23 표5(측정 대상별 판정)에 '전극 | 줄이지 못함 | 물속 60분 표류 점퍼선 핀 −59.20, 은선 −82.91 mV' 줄 추가(`fix_user_1123b.py`, 최종_20261123 에 적용, 사용자 "종합에 안 고쳐졌다" — 고칠 때 표·종합까지 전부 확인할 것).
 - 11-23 포스터 글자판 `report/발표포스터_20261123.hwpx`(`poster_text_1123.py`, 사용자 "글자 ㄱㄱ"): 본문 charPr 7 을 19 pt 로, 강조 11·소제목 12, 목록 줄은 paraPr 10(130 %). rhwp 는 글상자 안 글을 겹쳐 그려 확인 못 함 — 칸 넘침은 추정(왼쪽 94 %, 오른쪽 97 %), 한글 확인 필요. 그림판은 `발표포스터_20261119.hwpx`.
 - 11-23 의의 ① 에 파이프라인 성과(회로→수집·변환·학습·실시간 판정, 손 접촉 모델 95.5~99.8 %, 부스 체험 화면) 넣고 기존 ①~③ → ②~④, 결론 '이루지 못했지만, 파이프라인을 직접 만들었고' (`fix_user_1123c.py`, 사용자 동의).
+- 11-23 포스터 편집기 아티팩트 https://claude.ai/artifact/LUBDec3bE7r6PSp5fpdJMD (사용자 "걍 사진으로, 내가 수정할 수 있게"): 절 HTML 을 고쳐 저장하면 db 'poster/current'(s1~s5). 반영: ArtifactData get → JSON 파일로 → OVERRIDE=<json> node report/stim/poster_sections.js … → poster_1119.py. 편집기 원본 report/poster_editor/(tpl.html·data.json, EXPORT=<폴더> 로 다시 뽑음). 포스터는 그림판(20261119)을 쓴다.
