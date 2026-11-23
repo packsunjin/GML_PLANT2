@@ -137,7 +137,7 @@ def pic_before(cap, k, n):
     if c is not None: c.set("right", str(wpx * 75)); c.set("bottom", str(hpx * 75))
     for ls in pp.iter(Q("lineseg")):
         ls.set("vertsize", str(h)); ls.set("textheight", str(h)); ls.set("baseline", str(round(h * 0.85)))
-pic_before(cap_p4, "07", 21); pic_before(cap_f5, "10", 22); pic_before(cap_f6, "11", 23)
+pic_before(cap_p4, "07", 11); pic_before(cap_f5, "10", 12); pic_before(cap_f6, "11", 13)  # 번호를 이어서(image11~13): 21~23 이면 한글에서 안 보임(11-23)
 # 줄 배치: 모두 지운다(한글이 다시 계산). 그림 문단의 세로 위치를 0 으로 두면 한글이 '새 쪽 맨 위'로 읽어
 # 그림마다 쪽이 넘어간다(11-19 한글 31쪽 확인). 그래서 그림은 줄에 묶지 않고 문단에 붙은 개체(위아래 자리차지,
 # 가운데)로 바꾼다 — 개체는 줄 배치 정보 없이도 한글이 자리를 잡는다.
@@ -176,7 +176,7 @@ for pic in ([] if os.environ.get("INLINE") else d.root.iter(Q("pic"))):
 # 그림 가로를 39902(양식 기준, 본문 폭의 약 83 %)로 줄인다 — 20쪽 안에 넣으려고(rhwp 로 21쪽 확인).
 W_FIG = 39902
 # 세로로 긴 사진은 더 좁게(20쪽 안에 넣으려고): 사진2·사진4·사진5 30000, 사진3 32000
-W_REF = {"image3": 36000, "image4": 48190, "image21": 28000, "image10": 28000}
+W_REF = {"image3": 36000, "image4": 48190, "image11": 28000, "image10": 28000}
 for pic in d.root.iter(Q("pic")):
     sz = pic.find(Q("sz")); w0 = int(sz.get("width")); h0 = int(sz.get("height"))
     wt = W_REF.get(pic.find(".//{%s}img" % HC).get("binaryItemIDRef"), W_FIG)
