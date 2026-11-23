@@ -28,7 +28,7 @@ const S = {
        ${fig('01', '그림1. 식물 전기신호의 주파수 위치와 분석 범위', 78)}`,
   // Ⅲ. 연구방법
   s3: `${fig('02', '그림2. 측정 시스템 구성 — 두 전극의 전위 차이를 재는 DC 결합 측정계')}
-       ${fig('03', '사진1. 실험 장치 — (가) 패러데이 상자, (나) 상자 밖 회로와 라즈베리파이', 56)}
+       <div class="prow"><figure><img src="${src('03')}">${cap('사진1. 실험 장치 — (가) 패러데이 상자, (나) 상자 밖 회로')}</figure><figure><img src="${src('05')}">${cap('사진2. 측정 회로의 배선')}</figure></div>
        <table class="ms"><tr><th>측정</th><th>길이</th><th>본 것</th></tr>
        <tr><td>회로만 (예비 1단계)</td><td>30분</td><td>회로 표류</td></tr>
        <tr><td>점퍼선 핀 전극, 물속 (예비 2단계)</td><td>60분</td><td>전극 표류</td></tr>
@@ -90,6 +90,8 @@ table.cmp{width:100%;border-collapse:collapse;margin:4px 0 6px;font-size:25px;te
 .note{font-size:23px;color:#555;margin:2px 0 10px}
 table.ms{width:100%;border-collapse:collapse;margin:6px 0 10px;font-size:25px}.ms th{background:#905720;color:#fff;padding:5px 8px;font-weight:700}
 .ms td{padding:5px 8px;border-bottom:1px solid #e2d6c6}.row{display:flex;gap:16px;align-items:flex-end}.row figure{flex:1;margin:6px 0 8px}.row img{width:100%;height:300px;object-fit:contain}
+.prow{display:flex;gap:14px;justify-content:center;align-items:flex-start;margin:6px 0 12px}.prow figure{margin:0}.prow img{height:230px;width:auto}.prow figcaption{font-size:23px}
+.pcap{display:flex;justify-content:center;gap:40px;margin:0 0 12px}.pcap figcaption{font-size:23px}
 .ms td:nth-child(2){text-align:center;white-space:nowrap}
 .an{font-size:24px;background:#f6efe5;border-radius:10px;padding:8px 12px;margin:0 0 12px;line-height:1.4}
 .pipe{display:flex;align-items:center;gap:6px;margin:6px 0 12px}.pipe div{flex:1;background:#f6efe5;border-radius:10px;padding:8px 4px;text-align:center;font-size:23px;line-height:1.25}
